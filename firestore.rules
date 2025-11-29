@@ -1,0 +1,216 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ========================================================================
+    // Helper Functions
+    // ========================================================================
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if the authenticated user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Check if user has an active Pro subscription
+    function isProSubscriber() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscription.status == 'active' &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.subscription.plan == 'pro';
+    }
+    
+    // Get user's scan count
+    function getUserScanCount() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.scanCount;
+    }
+    
+    // ========================================================================
+    // Users Collection
+    // ========================================================================
+    
+    match /users/{userId} {
+      // Users can read their own profile
+      allow read: if isOwner(userId);
+      
+      // Users can create their own profile (on signup)
+      allow create: if isOwner(userId) && 
+        request.resource.data.keys().hasAll(['email', 'createdAt']) &&
+        request.resource.data.subscription.plan == 'freemium';
+      
+      // Users can update their own profile (but not subscription directly)
+      allow update: if isOwner(userId) && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['subscription']);
+      
+      // Subscriptions subcollection (read-only for users, managed by webhooks)
+      match /subscriptions/{subscriptionId} {
+        allow read: if isOwner(userId);
+        // Write operations handled by Cloud Functions only
+        allow write: if false;
+      }
+    }
+    
+    // ========================================================================
+    // Projects Collection
+    // ========================================================================
+    
+    match /projects/{projectId} {
+      // Owner can read their projects
+      allow read: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+      
+      // Authenticated users can create projects
+      allow create: if isAuthenticated() && 
+        request.resource.data.ownerId == request.auth.uid;
+      
+      // Owner can update their projects
+      allow update: if isAuthenticated() && 
+        resource.data.ownerId == request.auth.uid;
+      
+      // Owner can delete their projects
+      allow delete: if isAuthenticated() && 
+        resource.data.ownerId == request.auth.uid;
+      
+      // ======================================================================
+      // Scans Subcollection
+      // ======================================================================
+      
+      match /scans/{scanId} {
+        // Owner can read scans
+        allow read: if isAuthenticated() && 
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+        
+        // Create scan: Free users limited to 1 scan, Pro users unlimited
+        allow create: if isAuthenticated() && 
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid &&
+          (isProSubscriber() || getUserScanCount() < 1);
+        
+        // Owner can update scans
+        allow update: if isAuthenticated() && 
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+        
+        // Owner can delete scans
+        allow delete: if isAuthenticated() && 
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+      }
+      
+      // ======================================================================
+      // Floor Plans Subcollection
+      // ======================================================================
+      
+      match /floorPlans/{floorPlanId} {
+        // Owner can read floor plans
+        allow read: if isAuthenticated() && 
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+        
+        // Only Pro users can create floor plans (premium feature)
+        allow create: if isAuthenticated() && 
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid &&
+          isProSubscriber();
+        
+        // Owner can update floor plans
+        allow update: if isAuthenticated() && 
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+        
+        // Owner can delete floor plans  
+        allow delete: if isAuthenticated() && 
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+      }
+      
+      // ======================================================================
+      // Designs Subcollection
+      // ======================================================================
+      
+      match /designs/{designId} {
+        // Owner can read designs
+        allow read: if isAuthenticated() && 
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+        
+        // Authenticated project owners can create designs
+        allow create: if isAuthenticated() && 
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+        
+        // Owner can update designs
+        allow update: if isAuthenticated() && 
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+        
+        // Owner can delete designs
+        allow delete: if isAuthenticated() && 
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+        
+        // Placed Objects Sub-subcollection
+        match /placedObjects/{objectId} {
+          allow read, write: if isAuthenticated() && 
+            get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+        }
+      }
+    }
+    
+    // ========================================================================
+    // Products Cache Collection (read-only for clients)
+    // ========================================================================
+    
+    match /products/{productId} {
+      // Anyone authenticated can read cached products
+      allow read: if isAuthenticated();
+      
+      // Write operations handled by Cloud Functions only
+      allow write: if false;
+    }
+    
+    match /productCache/{cacheKey} {
+      // Anyone authenticated can read product cache
+      allow read: if isAuthenticated();
+      
+      // Write operations handled by API routes only
+      allow write: if false;
+    }
+    
+    // ========================================================================
+    // AI Tasks Collection (internal use)
+    // ========================================================================
+    
+    match /aiTasks/{taskId} {
+      // Users can read their own tasks
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      
+      // Write operations handled by Cloud Functions only
+      allow write: if false;
+    }
+    
+    // ========================================================================
+    // Editing Sessions Collection (Nano Banana)
+    // ========================================================================
+    
+    match /editingSessions/{sessionId} {
+      // Owner can read their sessions
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      
+      // Create: authenticated users
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+      
+      // Update: owner only
+      allow update: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      
+      // Delete: owner only
+      allow delete: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      
+      // Messages subcollection
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && 
+          get(/databases/$(database)/documents/editingSessions/$(sessionId)).data.userId == request.auth.uid;
+        
+        // Write handled by Cloud Functions
+        allow write: if false;
+      }
+    }
+  }
+}
+

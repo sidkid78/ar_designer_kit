@@ -7,7 +7,7 @@
  * currently selected tool or mode.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useARStore } from '@/stores/useARStore';
 import { useProjectStore } from '@/stores/useProjectStore';
 import { cn } from '@/lib/utils';

@@ -111,7 +111,10 @@ export interface Subscription {
 // Projects Hook
 // ============================================================================
 
-export function useProjects() {
+export function useProjects(options?: {
+  limitCount?: number;
+  constraints?: QueryConstraint[];
+}) {
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,16 +122,23 @@ export function useProjects() {
 
   useEffect(() => {
     if (!user) {
-      setProjects([]);
-      setLoading(false);
       return;
     }
 
-    const q = query(
-      collection(db, 'projects'),
+    const constraints: QueryConstraint[] = [
       where('ownerId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
+      orderBy('createdAt', 'desc'),
+    ];
+
+    if (options?.constraints) {
+      constraints.push(...options.constraints);
+    }
+
+    if (options?.limitCount) {
+      constraints.push(limit(options.limitCount));
+    }
+
+    const q = query(collection(db, 'projects'), ...constraints);
 
     const unsubscribe = onSnapshot(
       q,
@@ -148,7 +158,7 @@ export function useProjects() {
     );
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, options?.limitCount, options?.constraints]);
 
   const createProject = useCallback(async (data: { name: string; description?: string }) => {
     if (!user) throw new Error('Must be authenticated');
@@ -187,20 +197,22 @@ export function useProjects() {
 // Single Project Hook
 // ============================================================================
 
-export function useProject(projectId: string | null) {
+export function useProject(projectId: string | null | DocumentReference) {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!projectId) {
-      setProject(null);
-      setLoading(false);
       return;
     }
 
+    const docRef = typeof projectId === 'string' 
+      ? doc(db, 'projects', projectId)
+      : projectId;
+
     const unsubscribe = onSnapshot(
-      doc(db, 'projects', projectId),
+      docRef,
       (snapshot) => {
         if (snapshot.exists()) {
           setProject({ id: snapshot.id, ...snapshot.data() } as Project);
@@ -226,21 +238,34 @@ export function useProject(projectId: string | null) {
 // Scans Hook
 // ============================================================================
 
-export function useScans(projectId: string) {
+export function useScans(projectId: string, options?: {
+  limitCount?: number;
+  constraints?: QueryConstraint[];
+}) {
   const [scans, setScans] = useState<Scan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!projectId) {
-      setScans([]);
-      setLoading(false);
       return;
+    }
+
+    const constraints: QueryConstraint[] = [
+      orderBy('createdAt', 'desc'),
+    ];
+
+    if (options?.constraints) {
+      constraints.push(...options.constraints);
+    }
+
+    if (options?.limitCount) {
+      constraints.push(limit(options.limitCount));
     }
 
     const q = query(
       collection(db, 'projects', projectId, 'scans'),
-      orderBy('createdAt', 'desc')
+      ...constraints
     );
 
     const unsubscribe = onSnapshot(
@@ -261,7 +286,7 @@ export function useScans(projectId: string) {
     );
 
     return () => unsubscribe();
-  }, [projectId]);
+  }, [projectId, options?.limitCount, options?.constraints]);
 
   return { scans, loading, error };
 }
@@ -316,20 +341,22 @@ export function useFirestoreScan(projectId: string) {
 // Single Scan Hook (with real-time status updates)
 // ============================================================================
 
-export function useScan(projectId: string, scanId: string | null) {
+export function useScan(projectId: string, scanId: string | null | DocumentReference) {
   const [scan, setScan] = useState<Scan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!projectId || !scanId) {
-      setScan(null);
-      setLoading(false);
       return;
     }
 
+    const docRef = typeof scanId === 'string'
+      ? doc(db, 'projects', projectId, 'scans', scanId)
+      : scanId;
+
     const unsubscribe = onSnapshot(
-      doc(db, 'projects', projectId, 'scans', scanId),
+      docRef,
       (snapshot) => {
         if (snapshot.exists()) {
           setScan({ id: snapshot.id, ...snapshot.data() } as Scan);
@@ -355,21 +382,34 @@ export function useScan(projectId: string, scanId: string | null) {
 // Designs Hook
 // ============================================================================
 
-export function useDesigns(projectId: string) {
+export function useDesigns(projectId: string, options?: {
+  limitCount?: number;
+  constraints?: QueryConstraint[];
+}) {
   const [designs, setDesigns] = useState<Design[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!projectId) {
-      setDesigns([]);
-      setLoading(false);
       return;
+    }
+
+    const constraints: QueryConstraint[] = [
+      orderBy('createdAt', 'desc'),
+    ];
+
+    if (options?.constraints) {
+      constraints.push(...options.constraints);
+    }
+
+    if (options?.limitCount) {
+      constraints.push(limit(options.limitCount));
     }
 
     const q = query(
       collection(db, 'projects', projectId, 'designs'),
-      orderBy('createdAt', 'desc')
+      ...constraints
     );
 
     const unsubscribe = onSnapshot(
@@ -390,7 +430,7 @@ export function useDesigns(projectId: string) {
     );
 
     return () => unsubscribe();
-  }, [projectId]);
+  }, [projectId, options?.limitCount, options?.constraints]);
 
   return { designs, loading, error };
 }
@@ -435,20 +475,22 @@ export function useFirestoreDesign(projectId: string) {
 // Single Design Hook (with real-time status updates)
 // ============================================================================
 
-export function useDesign(projectId: string, designId: string | null) {
+export function useDesign(projectId: string, designId: string | null | DocumentReference) {
   const [design, setDesign] = useState<Design | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!projectId || !designId) {
-      setDesign(null);
-      setLoading(false);
       return;
     }
 
+    const docRef = typeof designId === 'string'
+      ? doc(db, 'projects', projectId, 'designs', designId)
+      : designId;
+
     const unsubscribe = onSnapshot(
-      doc(db, 'projects', projectId, 'designs', designId),
+      docRef,
       (snapshot) => {
         if (snapshot.exists()) {
           setDesign({ id: snapshot.id, ...snapshot.data() } as Design);
@@ -474,21 +516,35 @@ export function useDesign(projectId: string, designId: string | null) {
 // Placed Objects Hook
 // ============================================================================
 
-export function usePlacedObjects(projectId: string, designId: string) {
+export function usePlacedObjects(projectId: string, designId: string, options?: {
+  limitCount?: number;
+  constraints?: QueryConstraint[];
+}) {
   const [objects, setObjects] = useState<PlacedObject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!projectId || !designId) {
-      setObjects([]);
-      setLoading(false);
       return;
     }
 
-    const q = query(
-      collection(db, 'projects', projectId, 'designs', designId, 'placedObjects')
-    );
+    const constraints: QueryConstraint[] = [];
+
+    if (options?.constraints) {
+      constraints.push(...options.constraints);
+    }
+
+    if (options?.limitCount) {
+      constraints.push(limit(options.limitCount));
+    }
+
+    const q = constraints.length > 0
+      ? query(
+          collection(db, 'projects', projectId, 'designs', designId, 'placedObjects'),
+          ...constraints
+        )
+      : collection(db, 'projects', projectId, 'designs', designId, 'placedObjects');
 
     const unsubscribe = onSnapshot(
       q,
@@ -508,7 +564,7 @@ export function usePlacedObjects(projectId: string, designId: string) {
     );
 
     return () => unsubscribe();
-  }, [projectId, designId]);
+  }, [projectId, designId, options?.limitCount, options?.constraints]);
 
   const addObject = useCallback(async (data: Omit<PlacedObject, 'id'>) => {
     const docRef = await addDoc(
@@ -553,8 +609,6 @@ export function useSubscription() {
 
   useEffect(() => {
     if (!user) {
-      setSubscription(null);
-      setLoading(false);
       return;
     }
 

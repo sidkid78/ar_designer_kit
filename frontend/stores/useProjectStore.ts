@@ -172,7 +172,7 @@ const initialState = {
 export const useProjectStore = create<ProjectState>()(
   devtools(
     persist(
-      (set, get) => ({
+      (set) => ({
         ...initialState,
 
         // Project actions

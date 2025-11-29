@@ -514,7 +514,7 @@ export class ARBridgeWeb implements ARBridgePlugin {
     };
   }
   
-  async startScan(_options?: ScanOptions): Promise<ScanStartResult> {
+  async startScan(): Promise<ScanStartResult> {
     console.warn('[ARBridge] startScan called in web mode');
     this.emit('scanStarted', {});
     
@@ -571,7 +571,7 @@ export class ARBridgeWeb implements ARBridgePlugin {
     return { status: 'removed' };
   }
   
-  async measureDistance(_options: MeasureOptions): Promise<MeasureResult> {
+  async measureDistance(): Promise<MeasureResult> {
     console.warn('[ARBridge] measureDistance called in web mode');
     return {
       distance: 2.5,
@@ -582,19 +582,19 @@ export class ARBridgeWeb implements ARBridgePlugin {
     };
   }
   
-  async applyVirtualMaterial(_options: MaterialOptions): Promise<{ status: string }> {
+  async applyVirtualMaterial(): Promise<{ status: string }> {
     console.warn('[ARBridge] applyVirtualMaterial called in web mode');
     return { status: 'applied' };
   }
   
-  async hitTest(_options: HitTestOptions): Promise<HitTestResult> {
+  async hitTest(): Promise<HitTestResult> {
     console.warn('[ARBridge] hitTest called in web mode');
     return { hit: true, position: { x: 0, y: 0, z: -1 } };
   }
   
-  async exportMesh(_options?: ExportOptions): Promise<ExportResult> {
+  async exportMesh(): Promise<ExportResult> {
     console.warn('[ARBridge] exportMesh called in web mode');
-    return { meshUrl: 'mock://exported.glb', format: _options?.format || 'glb' };
+    return { meshUrl: 'mock://exported.glb', format: 'glb' };
   }
   
   async getTrackingState(): Promise<TrackingStateResult> {

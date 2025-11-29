@@ -48,7 +48,7 @@ export function useWebXR(): UseWebXRReturn {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [placedObjects, setPlacedObjects] = useState<PlacedObject[]>([]);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
-  const [lastHitPosition, setLastHitPosition] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [lastHitPosition] = useState<{ x: number; y: number; z: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   const sessionRef = useRef<XRSession | null>(null);
@@ -87,13 +87,12 @@ export function useWebXR(): UseWebXRReturn {
       setIsSessionActive(true);
       setError(null);
 
-      // Set up hit test source
-      const referenceSpace = await session.requestReferenceSpace('local-floor');
+      // Set up hit test source using viewer reference space
       const viewerSpace = await session.requestReferenceSpace('viewer');
       
-      hitTestSourceRef.current = await session.requestHitTestSource!({
+      hitTestSourceRef.current = await session.requestHitTestSource?.({
         space: viewerSpace,
-      });
+      }) ?? null;
 
       // Handle session end
       session.addEventListener('end', () => {

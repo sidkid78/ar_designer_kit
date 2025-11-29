@@ -132,57 +132,60 @@ declare module '@react-three/xr' {
 }
 
 // Extend JSX.IntrinsicElements for React Three Fiber
+// Using 'any' to allow flexible props that R3F handles at runtime
+/* eslint-disable @typescript-eslint/no-explicit-any */
 declare global {
   namespace JSX {
     interface IntrinsicElements {
       // Lights
-      ambientLight: unknown;
-      directionalLight: unknown;
-      pointLight: unknown;
-      spotLight: unknown;
-      hemisphereLight: unknown;
+      ambientLight: any;
+      directionalLight: any;
+      pointLight: any;
+      spotLight: any;
+      hemisphereLight: any;
 
       // Objects
-      mesh: unknown;
-      group: unknown;
-      primitive: unknown;
-      line: unknown;
-      lineSegments: unknown;
-      points: unknown;
+      mesh: any;
+      group: any;
+      primitive: any;
+      line: any;
+      lineSegments: any;
+      points: any;
 
       // Geometries
-      boxGeometry: unknown;
-      planeGeometry: unknown;
-      sphereGeometry: unknown;
-      cylinderGeometry: unknown;
-      coneGeometry: unknown;
-      torusGeometry: unknown;
-      ringGeometry: unknown;
-      circleGeometry: unknown;
-      bufferGeometry: unknown;
+      boxGeometry: any;
+      planeGeometry: any;
+      sphereGeometry: any;
+      cylinderGeometry: any;
+      coneGeometry: any;
+      torusGeometry: any;
+      ringGeometry: any;
+      circleGeometry: any;
+      bufferGeometry: any;
 
       // Materials
-      meshBasicMaterial: unknown;
-      meshStandardMaterial: unknown;
-      meshPhongMaterial: unknown;
-      meshLambertMaterial: unknown;
-      meshPhysicalMaterial: unknown;
-      lineBasicMaterial: unknown;
-      lineDashedMaterial: unknown;
-      pointsMaterial: unknown;
-      shaderMaterial: unknown;
+      meshBasicMaterial: any;
+      meshStandardMaterial: any;
+      meshPhongMaterial: any;
+      meshLambertMaterial: any;
+      meshPhysicalMaterial: any;
+      lineBasicMaterial: any;
+      lineDashedMaterial: any;
+      pointsMaterial: any;
+      shaderMaterial: any;
 
       // Helpers
-      gridHelper: unknown;
-      axesHelper: unknown;
-      boxHelper: unknown;
+      gridHelper: any;
+      axesHelper: any;
+      boxHelper: any;
 
       // Other
-      fog: unknown;
-      color: unknown;
+      fog: any;
+      color: any;
     }
   }
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export {};
 

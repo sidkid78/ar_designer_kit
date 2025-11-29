@@ -40,7 +40,7 @@ declare module '@react-three/fiber' {
 
   export interface EventManager<T> {
     connected: T | null;
-    handlers: Record<string, (event: any) => void>;
+    handlers: Record<string, (event: unknown) => void>;
     connect: (target: T) => void;
     disconnect: () => void;
   }
@@ -136,50 +136,50 @@ declare global {
   namespace JSX {
     interface IntrinsicElements {
       // Lights
-      ambientLight: any;
-      directionalLight: any;
-      pointLight: any;
-      spotLight: any;
-      hemisphereLight: any;
+      ambientLight: unknown;
+      directionalLight: unknown;
+      pointLight: unknown;
+      spotLight: unknown;
+      hemisphereLight: unknown;
 
       // Objects
-      mesh: any;
-      group: any;
-      primitive: any;
-      line: any;
-      lineSegments: any;
-      points: any;
+      mesh: unknown;
+      group: unknown;
+      primitive: unknown;
+      line: unknown;
+      lineSegments: unknown;
+      points: unknown;
 
       // Geometries
-      boxGeometry: any;
-      planeGeometry: any;
-      sphereGeometry: any;
-      cylinderGeometry: any;
-      coneGeometry: any;
-      torusGeometry: any;
-      ringGeometry: any;
-      circleGeometry: any;
-      bufferGeometry: any;
+      boxGeometry: unknown;
+      planeGeometry: unknown;
+      sphereGeometry: unknown;
+      cylinderGeometry: unknown;
+      coneGeometry: unknown;
+      torusGeometry: unknown;
+      ringGeometry: unknown;
+      circleGeometry: unknown;
+      bufferGeometry: unknown;
 
       // Materials
-      meshBasicMaterial: any;
-      meshStandardMaterial: any;
-      meshPhongMaterial: any;
-      meshLambertMaterial: any;
-      meshPhysicalMaterial: any;
-      lineBasicMaterial: any;
-      lineDashedMaterial: any;
-      pointsMaterial: any;
-      shaderMaterial: any;
+      meshBasicMaterial: unknown;
+      meshStandardMaterial: unknown;
+      meshPhongMaterial: unknown;
+      meshLambertMaterial: unknown;
+      meshPhysicalMaterial: unknown;
+      lineBasicMaterial: unknown;
+      lineDashedMaterial: unknown;
+      pointsMaterial: unknown;
+      shaderMaterial: unknown;
 
       // Helpers
-      gridHelper: any;
-      axesHelper: any;
-      boxHelper: any;
+      gridHelper: unknown;
+      axesHelper: unknown;
+      boxHelper: unknown;
 
       // Other
-      fog: any;
-      color: any;
+      fog: unknown;
+      color: unknown;
     }
   }
 }

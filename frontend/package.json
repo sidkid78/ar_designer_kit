@@ -2,11 +2,32 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "overrides": {
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "@react-spring/animated": {
+      "react": "19.2.0"
+    },
+    "@react-spring/core": {
+      "react": "19.2.0"
+    },
+    "@react-spring/shared": {
+      "react": "19.2.0"
+    },
+    "@react-spring/three": {
+      "react": "19.2.0"
+    },
+    "@react-three/drei": {
+      "react": "19.2.0",
+      "react-dom": "19.2.0"
+    }
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "preinstall": "npx npm-force-resolutions || true"
   },
   "dependencies": {
     "@capacitor/cli": "^7.4.4",

@@ -680,7 +680,7 @@ This pipeline details the journey of a user's room scan from raw sensor data to 
   "userId": "u_xyz789", // Foreign key to users collection
   "roomName": "Living Room",
   "createdAt": "2023-10-27T10:00:00Z",
-  "storagePath": "gs://ar-designer-kit.appspot.com/scans/u_xyz789/s_abc123.glb",
+  "storagePath": "gs://ar-designer-kit.firebasestorage.app/scans/u_xyz789/s_abc123.glb",
   "dimensions": { "width": 4.5, "length": 6.2, "height": 2.8 }, // in meters
   "recognizedObjects": [
     { "type": "window", "position": [1.2, 1.5, 0.0], "size": [1.8, 1.2] },

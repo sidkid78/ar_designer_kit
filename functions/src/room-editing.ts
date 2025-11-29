@@ -1,33 +1,33 @@
 /**
  * room-editing.ts - Cloud Functions for Chat-Based Room Editing
- * 
+ *
  * Supports multi-turn conversational editing using Nano Banana Pro
  * with session persistence in Firestore.
  */
 
-import * as functions from 'firebase-functions';
-import * as admin from 'firebase-admin';
-import { google } from '@google-cloud/aiplatform';
-import { Storage } from '@google-cloud/storage';
-import { v4 as uuidv4 } from 'uuid';
+import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
+import {Storage} from "@google-cloud/storage";
+import {v4 as uuidv4} from "uuid";
+import sharp, { FormatEnum } from "sharp";
 
 // Initialize services
 const db = admin.firestore();
 const storage = new Storage();
-const BUCKET_NAME = process.env.STORAGE_BUCKET || 'ar-designer-kit-assets';
+const BUCKET_NAME = process.env.STORAGE_BUCKET || "ar-designer-kit-assets";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 interface ConversationTurn {
-  role: 'user' | 'model';
+  role: "user" | "model";
   parts: Array<{
     text?: string;
     imageUrl?: string;
     inlineData?: {
       mimeType: string;
-      data: string;  // base64
+      data: string; // base64
     };
   }>;
   timestamp: FirebaseFirestore.Timestamp;
@@ -71,17 +71,17 @@ interface GeneratedTexture {
 // Gemini Client Setup
 // ============================================================================
 
-import { GoogleGenAI } from '@google/genai';
+import {GoogleGenAI} from "@google/genai";
 
 const genai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
 const MODELS = {
-  FLASH: 'gemini-2.5-flash',
-  PRO: 'gemini-2.5-pro',
-  NANO_BANANA: 'gemini-2.5-flash-image',
-  NANO_BANANA_PRO: 'gemini-3-pro-image-preview',
+  FLASH: "gemini-2.5-flash",
+  PRO: "gemini-2.5-pro",
+  NANO_BANANA: "gemini-2.5-flash-image",
+  NANO_BANANA_PRO: "gemini-3-pro-image-preview",
 };
 
 // ============================================================================
@@ -94,46 +94,56 @@ const MODELS = {
 async function uploadImage(
   buffer: Buffer,
   path: string,
-  contentType: string = 'image/png'
+  contentType = "image/png"
 ): Promise<string> {
   const bucket = storage.bucket(BUCKET_NAME);
   const file = bucket.file(path);
-  
+
   await file.save(buffer, {
-    metadata: { contentType },
+    metadata: {contentType},
     resumable: false,
   });
-  
+
   // Make publicly readable
   await file.makePublic();
-  
+
   return `https://storage.googleapis.com/${BUCKET_NAME}/${path}`;
 }
 
 /**
  * Generate thumbnail from image buffer
+ * Uses sharp best practices: resize with fit option, explicit format
  */
 async function generateThumbnail(
   buffer: Buffer,
-  maxWidth: number = 256
+  maxWidth = 256,
+  contentType = "image/png"
 ): Promise<Buffer> {
-  // Using sharp for image processing (add to package.json)
-  const sharp = require('sharp');
+  const format = contentType.split("/")[1] as keyof FormatEnum;
   return sharp(buffer)
-    .resize(maxWidth, null, { withoutEnlargement: true })
-    .png()
+    .resize({
+      width: maxWidth,
+      fit: sharp.fit.inside,
+      withoutEnlargement: true,
+    })
+    .toFormat(format)
     .toBuffer();
 }
 
 /**
  * Convert Firestore history to Gemini content format
  */
-function historyToContents(history: ConversationTurn[]): any[] {
-  return history.map(turn => ({
+type GeminiContent = {
+  role: string;
+  parts: {text?: string; inlineData?: {mimeType: string; data: string}}[];
+};
+
+function historyToContents(history: ConversationTurn[]): GeminiContent[] {
+  return history.map((turn) => ({
     role: turn.role,
-    parts: turn.parts.map(part => {
+    parts: turn.parts.map((part) => {
       if (part.text) {
-        return { text: part.text };
+        return {text: part.text};
       }
       if (part.inlineData) {
         return {
@@ -143,7 +153,7 @@ function historyToContents(history: ConversationTurn[]): any[] {
           },
         };
       }
-      return { text: '' };
+      return {text: ""};
     }),
   }));
 }
@@ -151,23 +161,27 @@ function historyToContents(history: ConversationTurn[]): any[] {
 /**
  * Extract image from Gemini response parts
  */
-function extractImageFromResponse(response: any): { imageData: Buffer | null; text: string } {
+type GeminiResponse = {
+  candidates: {content: {parts: {text?: string; inlineData?: {data: string}}[]}}[];
+};
+
+function extractImageFromResponse(response: GeminiResponse): { imageData: Buffer | null; text: string } {
   let imageData: Buffer | null = null;
-  let text = '';
-  
+  let text = "";
+
   for (const part of response.candidates?.[0]?.content?.parts || []) {
     // Skip thinking parts
-    if (part.thought) continue;
-    
+    if ((part as unknown as {thought?: string}).thought) continue;
+
     if (part.text) {
       text += part.text;
     }
     if (part.inlineData?.data) {
-      imageData = Buffer.from(part.inlineData.data, 'base64');
+      imageData = Buffer.from(part.inlineData.data, "base64");
     }
   }
-  
-  return { imageData, text };
+
+  return {imageData, text};
 }
 
 // ============================================================================
@@ -180,28 +194,35 @@ function extractImageFromResponse(response: any): { imageData: Buffer | null; te
 export const createEditingSession = functions.https.onCall(
   async (data, context) => {
     // Verify authentication
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+    if (!(context as unknown as {auth: {uid: string}}).auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Must be logged in");
     }
-    
-    const { projectId, roomId, initialImageBase64, mimeType = 'image/jpeg' } = data;
-    
+
+    const {projectId, roomId, initialImageBase64, mimeType = "image/jpeg"} = data as unknown as {
+        projectId: string; 
+        roomId: string; 
+        initialImageBase64: string; 
+        mimeType?: string | undefined   
+        };
+    const mimeTypeValue = mimeType || "image/jpeg";
+
     if (!projectId || !roomId) {
-      throw new functions.https.HttpsError('invalid-argument', 'Missing projectId or roomId');
+      throw new functions.https.HttpsError("invalid-argument", "Missing projectId or roomId");
     }
-    
-    const userId = context.auth.uid;
+
+    const userId = (context as unknown as {auth: {uid: string}}).auth?.uid;
     const sessionId = uuidv4();
     const now = admin.firestore.Timestamp.now();
-    
+
     // Upload initial image if provided
     let initialImageUrl: string | undefined;
     if (initialImageBase64) {
-      const buffer = Buffer.from(initialImageBase64, 'base64');
-      const imagePath = `users/${userId}/projects/${projectId}/sessions/${sessionId}/original.${mimeType.split('/')[1]}`;
-      initialImageUrl = await uploadImage(buffer, imagePath, mimeType);
-    }
-    
+      const buffer = Buffer.from(initialImageBase64, "base64");
+      const imagePath = 
+      `users/${userId}/projects/${projectId}/sessions/${sessionId}/original.png`;
+      initialImageUrl = await uploadImage(buffer, imagePath, mimeTypeValue);
+    }   
+
     // Create session document
     const session: EditingSession = {
       id: sessionId,
@@ -216,14 +237,14 @@ export const createEditingSession = functions.https.onCall(
         editCount: 0,
       },
     };
-    
+
     await db
-      .collection('users')
+      .collection("users")
       .doc(userId)
-      .collection('editingSessions')
+      .collection("editingSessions")
       .doc(sessionId)
       .set(session);
-    
+
     return {
       sessionId,
       initialImageUrl,
@@ -236,75 +257,84 @@ export const createEditingSession = functions.https.onCall(
  */
 export const sendRoomEdit = functions.https.onCall(
   async (data, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+    if (!(context as unknown as {auth: {uid: string}}).auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Must be logged in");
     }
-    
+
     const {
       sessionId,
       prompt,
       newImageBase64,
-      mimeType = 'image/jpeg',
-      aspectRatio = '16:9',
-      imageSize = '2K',
-    } = data;
-    
+      mimeType = "image/jpeg",
+      aspectRatio = "16:9",
+      imageSize = "2K",
+    } = data as unknown as {
+        sessionId: string; 
+        prompt: string; 
+        newImageBase64: string; 
+        mimeType?: string | undefined; 
+        aspectRatio: string | undefined; 
+        imageSize: string | undefined;
+    };
+    const mimeTypeValue = mimeType || "image/jpeg";
+
     if (!sessionId || !prompt) {
-      throw new functions.https.HttpsError('invalid-argument', 'Missing sessionId or prompt');
+      throw new functions.https.HttpsError("invalid-argument", "Missing sessionId or prompt");
     }
-    
-    const userId = context.auth.uid;
-    
+
+    const userId = (context as unknown as {auth: {uid: string}}).auth?.uid;
+
     // Get session
     const sessionRef = db
-      .collection('users')
+      .collection("users")
       .doc(userId)
-      .collection('editingSessions')
+      .collection("editingSessions")
       .doc(sessionId);
-    
+
     const sessionDoc = await sessionRef.get();
     if (!sessionDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Session not found');
+      throw new functions.https.HttpsError("not-found", "Session not found");
     }
-    
+
     const session = sessionDoc.data() as EditingSession;
-    
+
     // Build user message parts
-    const userParts: any[] = [];
-    
+    const userParts: {text?: string; inlineData?: {mimeType: string; data: string}}[] = [];
+
     // Add new image if provided
     if (newImageBase64) {
       userParts.push({
         inlineData: {
-          mimeType,
+          mimeType: mimeTypeValue,
           data: newImageBase64,
         },
       });
     }
-    
+
     // Add prompt
-    userParts.push({ text: prompt });
-    
+    userParts.push({text: prompt});
+
     // Build contents from history + new message
     const contents = historyToContents(session.history);
-    contents.push({ role: 'user', parts: userParts });
-    
+    contents.push({role: "user", parts: userParts});
+
     // Call Gemini
     const response = await genai.models.generateContent({
       model: MODELS.NANO_BANANA_PRO,
       contents,
       config: {
-        responseModalities: ['TEXT', 'IMAGE'],
+        responseModalities: ["TEXT", "IMAGE"],
         imageConfig: {
           aspectRatio,
           imageSize,
         },
       },
     });
-    
+
     // Extract result
-    const { imageData, text } = extractImageFromResponse(response);
-    
+    const {imageData, text} = extractImageFromResponse(
+        response as unknown as {candidates: {content: {parts: {text?: string; inlineData?: {data: string}}[]}}[]});
+
     // Upload generated image
     let generatedImageUrl: string | undefined;
     if (imageData) {
@@ -312,38 +342,38 @@ export const sendRoomEdit = functions.https.onCall(
       const imagePath = `users/${userId}/projects/${session.projectId}/sessions/${sessionId}/edit_${editNum}.png`;
       generatedImageUrl = await uploadImage(imageData, imagePath);
     }
-    
+
     // Update session history
     const now = admin.firestore.Timestamp.now();
-    
+
     // Add user turn
     session.history.push({
-      role: 'user',
-      parts: newImageBase64
-        ? [{ inlineData: { mimeType, data: newImageBase64 } }, { text: prompt }]
-        : [{ text: prompt }],
+      role: "user",
+      parts: newImageBase64 ?
+        [{inlineData: {mimeType: mimeTypeValue, data: newImageBase64}}, {text: prompt}] :
+        [{text: prompt}],
       timestamp: now,
     });
-    
+
     // Add model turn
-    const modelParts: any[] = [];
-    if (text) modelParts.push({ text });
-    if (generatedImageUrl) modelParts.push({ imageUrl: generatedImageUrl });
-    
+    const modelParts: {text?: string; imageUrl?: string}[] = [];
+    if (text) modelParts.push({text});
+    if (generatedImageUrl) modelParts.push({imageUrl: generatedImageUrl});
+
     session.history.push({
-      role: 'model',
+      role: "model",
       parts: modelParts,
       timestamp: now,
     });
-    
+
     // Update session
     await sessionRef.update({
-      history: session.history,
-      updatedAt: now,
-      currentImageUrl: generatedImageUrl || session.currentImageUrl,
-      'metadata.editCount': session.metadata.editCount + 1,
+      "history": session.history,
+      "updatedAt": now,
+      "currentImageUrl": generatedImageUrl || session.currentImageUrl,
+      "metadata.editCount": session.metadata.editCount + 1,
     });
-    
+
     return {
       imageUrl: generatedImageUrl,
       text,
@@ -356,39 +386,52 @@ export const sendRoomEdit = functions.https.onCall(
  * Generate style variations for a room
  */
 export const generateStyleVariations = functions
-  .runWith({ timeoutSeconds: 300, memory: '2GB' })
   .https.onCall(async (data, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+    if (!(context as unknown as {auth: {uid: string}}).auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Must be logged in");
     }
-    
+
     const {
-      projectId,
-      roomId,
-      imageBase64,
-      mimeType = 'image/jpeg',
-      baseStyle,
+      projectId, 
+      roomId, 
+      imageBase64, 
+      mimeType = "image/jpeg", 
+      aspectRatio = "16:9",
+      imageSize = "2K",
+      baseStyle, 
       numberOfVariations = 4,
-    } = data;
-    
-    if (!projectId || !roomId || !imageBase64 || !baseStyle) {
-      throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+    } = data as unknown as {
+        projectId: string; 
+        roomId: string; 
+        imageBase64: string; 
+        mimeType?: string | undefined; 
+        baseStyle: string; 
+        numberOfVariations: number | undefined;
+        aspectRatio: string | undefined;
+        imageSize: string | undefined;
+    };
+    const mimeTypeValue = mimeType || "image/jpeg";
+    const aspectRatioValue = aspectRatio || "16:9";
+    const imageSizeValue = imageSize || "2K";
+
+    if (!projectId || !roomId || !imageBase64 || !baseStyle || !aspectRatioValue || !imageSizeValue) {
+      throw new functions.https.HttpsError("invalid-argument", "Missing required fields");
     }
-    
-    const userId = context.auth.uid;
+
+    const userId = (context as unknown as {auth: {uid: string}}).auth?.uid;
     const variationId = uuidv4();
-    
+
     // Style modifiers for variations
     const styleModifiers = [
-      { id: 'warm', name: 'Warm & Cozy', modifier: 'warm earth tones, soft textures, ambient lighting' },
-      { id: 'cool', name: 'Cool & Modern', modifier: 'cool tones, clean lines, minimalist aesthetic' },
-      { id: 'natural', name: 'Natural & Organic', modifier: 'natural materials, plants, earthy elements' },
-      { id: 'luxurious', name: 'Luxurious & Elegant', modifier: 'premium materials, rich colors, sophisticated details' },
-      { id: 'bright', name: 'Bright & Airy', modifier: 'light colors, open feel, maximum natural light' },
+      {id: "warm", name: "Warm & Cozy", modifier: "warm earth tones, soft textures, ambient lighting"},
+      {id: "cool", name: "Cool & Modern", modifier: "cool tones, clean lines, minimalist aesthetic"},
+      {id: "natural", name: "Natural & Organic", modifier: "natural materials, plants, earthy elements"},
+      {id: "luxurious", name: "Luxurious & Elegant", modifier: "premium materials, rich colors, sophisticated details"},
+      {id: "bright", name: "Bright & Airy", modifier: "light colors, open feel, maximum natural light"},
     ].slice(0, Math.min(numberOfVariations, 5));
-    
+
     const variations: StyleVariation[] = [];
-    
+
     // Generate each variation
     for (const modifier of styleModifiers) {
       const prompt = `Transform this room with a ${baseStyle} style featuring ${modifier.modifier}.
@@ -405,33 +448,36 @@ Create a professional interior design visualization that:
           contents: [
             {
               inlineData: {
-                mimeType,
+                mimeType: mimeTypeValue,
                 data: imageBase64,
               },
             },
-            { text: prompt },
+            {text: prompt},
           ],
           config: {
-            responseModalities: ['TEXT', 'IMAGE'],
+            responseModalities: ["TEXT", "IMAGE"],
             imageConfig: {
-              aspectRatio: '16:9',
-              imageSize: '2K',
+              aspectRatio: aspectRatioValue,
+              imageSize: imageSizeValue as "1K" | "2K" | "4K",
             },
           },
         });
-        
-        const { imageData, text } = extractImageFromResponse(response);
-        
+
+        const {imageData, text} = extractImageFromResponse(
+            response as unknown as {candidates: {content: {parts: {text?: string; inlineData?: {data: string}}[]}}[]});
+
         if (imageData) {
           // Upload full image
-          const imagePath = `users/${userId}/projects/${projectId}/rooms/${roomId}/variations/${variationId}/${modifier.id}.png`;
-          const imageUrl = await uploadImage(imageData, imagePath);
-          
+          const imagePath = 
+          `users/${userId}/projects/${projectId}/rooms/${roomId}/variations/${variationId}/${modifier.id}.png`;
+          const imageUrl = await uploadImage(imageData, imagePath, "image/png");
+
           // Generate and upload thumbnail
-          const thumbnail = await generateThumbnail(imageData);
-          const thumbPath = `users/${userId}/projects/${projectId}/rooms/${roomId}/variations/${variationId}/${modifier.id}_thumb.png`;
-          const thumbnailUrl = await uploadImage(thumbnail, thumbPath);
-          
+          const thumbnail = await generateThumbnail(imageData, 128, "image/png");
+          const thumbPath = 
+          `users/${userId}/projects/${projectId}/rooms/${roomId}/variations/${variationId}/${modifier.id}_thumb.png`;
+          const thumbnailUrl = await uploadImage(thumbnail, thumbPath, "image/png");
+
           variations.push({
             id: modifier.id,
             name: modifier.name,
@@ -444,16 +490,16 @@ Create a professional interior design visualization that:
         console.error(`Failed to generate variation ${modifier.id}:`, error);
       }
     }
-    
+
     // Store variations in Firestore
     await db
-      .collection('users')
+      .collection("users")
       .doc(userId)
-      .collection('projects')
+      .collection("projects")
       .doc(projectId)
-      .collection('rooms')
+      .collection("rooms")
       .doc(roomId)
-      .collection('styleVariations')
+      .collection("styleVariations")
       .doc(variationId)
       .set({
         id: variationId,
@@ -461,7 +507,7 @@ Create a professional interior design visualization that:
         variations,
         createdAt: admin.firestore.Timestamp.now(),
       });
-    
+
     return {
       variationId,
       variations,
@@ -473,24 +519,29 @@ Create a professional interior design visualization that:
  */
 export const generateTexture = functions.https.onCall(
   async (data, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+    if (!(context as unknown as {auth: {uid: string}}).auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Must be logged in");
     }
-    
+
     const {
       projectId,
       materialDescription,
-      materialType = 'generic',
-      resolution = '2K',
-    } = data;
-    
-    if (!projectId || !materialDescription) {
-      throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+      materialType = "generic",
+      resolution = "2K",
+    } = data as unknown as {
+        projectId: string; 
+        materialDescription: string; 
+        materialType: string; 
+        resolution: "1K" | "2K" | "4K" | undefined
+    };
+    const resolutionValue = resolution || "2K";
+    if (!projectId || !materialDescription || !resolutionValue) {
+      throw new functions.https.HttpsError("invalid-argument", "Missing required fields");
     }
-    
-    const userId = context.auth.uid;
+
+    const userId = (context as unknown as {auth: {uid: string}}).auth?.uid;
     const textureId = uuidv4();
-    
+
     const prompt = `Create a seamless tileable texture for: ${materialDescription}
 
 Requirements:
@@ -506,52 +557,56 @@ Requirements:
       model: MODELS.NANO_BANANA_PRO,
       contents: [prompt],
       config: {
-        responseModalities: ['TEXT', 'IMAGE'],
+        responseModalities: ["TEXT", "IMAGE"],
         imageConfig: {
-          aspectRatio: '1:1',
-          imageSize: resolution,
+          aspectRatio: "1:1",
+          imageSize: resolutionValue as "1K" | "2K" | "4K",
         },
       },
     });
-    
-    const { imageData, text } = extractImageFromResponse(response);
-    
+
+    const {imageData} = extractImageFromResponse(
+      response as unknown as GeminiResponse
+    );
+
     if (!imageData) {
-      throw new functions.https.HttpsError('internal', 'Failed to generate texture');
+      throw new functions.https.HttpsError("internal", "Failed to generate texture");
     }
-    
+
     // Upload texture
-    const imagePath = `users/${userId}/projects/${projectId}/textures/${textureId}.png`;
-    const imageUrl = await uploadImage(imageData, imagePath);
-    
+    const imagePath = 
+    `users/${userId}/projects/${projectId}/textures/${textureId}.png`;
+    const imageUrl = await uploadImage(imageData, imagePath, "image/png");
+
     // Generate and upload thumbnail
-    const thumbnail = await generateThumbnail(imageData, 128);
-    const thumbPath = `users/${userId}/projects/${projectId}/textures/${textureId}_thumb.png`;
-    const thumbnailUrl = await uploadImage(thumbnail, thumbPath);
-    
+    const thumbnail = await generateThumbnail(imageData, 128, "image/png");
+    const thumbPath = 
+    `users/${userId}/projects/${projectId}/textures/${textureId}_thumb.png`;
+    const thumbnailUrl = await uploadImage(thumbnail, thumbPath, "image/png");
+
     const texture: GeneratedTexture = {
       id: textureId,
       name: materialDescription,
       materialType,
       imageUrl,
       thumbnailUrl,
-      resolution,
-      isSeamless: true,
+      resolution: resolutionValue,
+      isSeamless: true, 
     };
-    
+
     // Store in Firestore
     await db
-      .collection('users')
+      .collection("users")
       .doc(userId)
-      .collection('projects')
+      .collection("projects")
       .doc(projectId)
-      .collection('textures')
+      .collection("textures")
       .doc(textureId)
       .set({
         ...texture,
         createdAt: admin.firestore.Timestamp.now(),
       });
-    
+
     return texture;
   }
 );
@@ -561,36 +616,41 @@ Requirements:
  */
 export const getProductRecommendations = functions.https.onCall(
   async (data, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+    if (!(context as unknown as {auth: {uid: string}}).auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Must be logged in");
     }
-    
+
     const {
       roomAnalysis,
-      budget = 'medium',
+      budget = "medium",
       style,
       priorities = [],
-    } = data;
-    
+    } = data as unknown as {
+        roomAnalysis: {
+            roomType: string; dimensions: {
+                estimatedWidth: number; estimatedLength: number; estimatedHeight: number
+            }; lightingSuggestions: string[]; styleRecommendations: string[]; detectedFeatures: string[]
+        }; budget: string; style: string; priorities: string[]};
+
     if (!roomAnalysis) {
-      throw new functions.https.HttpsError('invalid-argument', 'Missing roomAnalysis');
+      throw new functions.https.HttpsError("invalid-argument", "Missing roomAnalysis");
     }
-    
+
     const budgetRanges: Record<string, string> = {
-      low: 'budget-friendly under $500',
-      medium: 'mid-range $500-2000',
-      high: 'premium $2000-5000',
-      luxury: 'luxury over $5000',
+      low: "budget-friendly under $500",
+      medium: "mid-range $500-2000",
+      high: "premium $2000-5000",
+      luxury: "luxury over $5000",
     };
-    
+
     const prompt = `Based on this room analysis, recommend specific furniture and decor products.
 
 Room Type: ${roomAnalysis.roomType}
 Room Dimensions: ${roomAnalysis.dimensions?.estimatedWidth || 0}m x ${roomAnalysis.dimensions?.estimatedLength || 0}m
-Style Recommendations: ${(roomAnalysis.styleRecommendations || []).join(', ')}
-User Preferred Style: ${style || 'Not specified'}
-Budget Range: ${budgetRanges[budget] || 'Not specified'}
-Priorities: ${priorities.length > 0 ? priorities.join(', ') : 'Not specified'}
+Style Recommendations: ${(roomAnalysis.styleRecommendations || []).join(", ")}
+User Preferred Style: ${style || "Not specified"}
+Budget Range: ${budgetRanges[budget] || "Not specified"}
+Priorities: ${priorities.length > 0 ? priorities.join(", ") : "Not specified"}
 
 Search for REAL products currently available from major retailers. Provide 5-8 recommendations as a JSON array:
 [
@@ -610,35 +670,35 @@ Return ONLY valid JSON array.`;
       model: MODELS.NANO_BANANA_PRO,
       contents: [prompt],
       config: {
-        responseModalities: ['TEXT'],
-        tools: [{ googleSearch: {} }],
+        responseModalities: ["TEXT"],
+        tools: [{googleSearch: {}}],
       },
     });
-    
-    const responseText = response.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
-    
+
+    const responseText = response.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+
     try {
       // Clean up response if needed
       let cleanJson = responseText;
-      if (responseText.includes('```json')) {
-        cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      if (responseText.includes("```json")) {
+        cleanJson = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "");
       }
-      
+
       const recommendations = JSON.parse(cleanJson);
-      
+
       // Get search metadata if available
       const searchQueries = response.candidates?.[0]?.groundingMetadata?.webSearchQueries || [];
-      
+
       return {
         recommendations,
         searchQueries,
       };
     } catch (error) {
-      console.error('Failed to parse recommendations:', responseText);
+      console.error("Failed to parse recommendations:", responseText);
       return {
         recommendations: [],
         searchQueries: [],
-        error: 'Failed to parse recommendations',
+        error: "Failed to parse recommendations",
       };
     }
   }
@@ -648,25 +708,24 @@ Return ONLY valid JSON array.`;
  * Analyze room and create initial session with analysis
  */
 export const analyzeAndCreateSession = functions
-  .runWith({ timeoutSeconds: 120, memory: '1GB' })
   .https.onCall(async (data, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+    if (!(context as unknown as {auth: {uid: string}}).auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Must be logged in");
     }
-    
+
     const {
       projectId,
       roomId,
       imageBase64,
-      mimeType = 'image/jpeg',
-    } = data;
-    
+      mimeType = "image/jpeg",
+    } = data as unknown as {projectId: string; roomId: string; imageBase64: string; mimeType: string | undefined};
+
     if (!projectId || !roomId || !imageBase64) {
-      throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+      throw new functions.https.HttpsError("invalid-argument", "Missing required fields");
     }
-    
-    const userId = context.auth.uid;
-    
+
+    const userId = (context as unknown as {auth: {uid: string}}).auth?.uid;
+
     // Analyze room using Flash model (fast)
     const analysisPrompt = `You are an expert interior designer and architect.
 Analyze this room image and provide a JSON object with:
@@ -696,37 +755,37 @@ Return ONLY valid JSON.`;
             data: imageBase64,
           },
         },
-        { text: analysisPrompt },
+        {text: analysisPrompt},
       ],
       config: {
-        responseMimeType: 'application/json',
-        thinkingConfig: { thinkingBudget: 128 },
+        responseMimeType: "application/json",
+        thinkingConfig: {thinkingBudget: 128},
       },
     });
-    
+
     let roomAnalysis;
     try {
-      const analysisText = analysisResponse.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+      const analysisText = analysisResponse.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
       roomAnalysis = JSON.parse(analysisText);
     } catch {
       roomAnalysis = {
-        roomType: 'unknown',
+        roomType: "unknown",
         dimensions: {},
         lightingSuggestions: [],
         styleRecommendations: [],
         detectedFeatures: [],
       };
     }
-    
+
     // Create session
     const sessionId = uuidv4();
     const now = admin.firestore.Timestamp.now();
-    
+
     // Upload original image
-    const buffer = Buffer.from(imageBase64, 'base64');
-    const imagePath = `users/${userId}/projects/${projectId}/rooms/${roomId}/original.${mimeType.split('/')[1]}`;
+    const buffer = Buffer.from(imageBase64, "base64");
+    const imagePath = `users/${userId}/projects/${projectId}/rooms/${roomId}/original.${mimeType.split("/")[1]}`;
     const imageUrl = await uploadImage(buffer, imagePath, mimeType);
-    
+
     // Create session
     const session: EditingSession = {
       id: sessionId,
@@ -742,29 +801,29 @@ Return ONLY valid JSON.`;
         editCount: 0,
       },
     };
-    
+
     await db
-      .collection('users')
+      .collection("users")
       .doc(userId)
-      .collection('editingSessions')
+      .collection("editingSessions")
       .doc(sessionId)
       .set(session);
-    
+
     // Store room analysis
     await db
-      .collection('users')
+      .collection("users")
       .doc(userId)
-      .collection('projects')
+      .collection("projects")
       .doc(projectId)
-      .collection('rooms')
+      .collection("rooms")
       .doc(roomId)
       .set({
         analysis: roomAnalysis,
         originalImageUrl: imageUrl,
         createdAt: now,
         updatedAt: now,
-      }, { merge: true });
-    
+      }, {merge: true});
+
     return {
       sessionId,
       imageUrl,
@@ -777,39 +836,35 @@ Return ONLY valid JSON.`;
  */
 export const getSessionHistory = functions.https.onCall(
   async (data, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+    if (!(context as unknown as {auth: {uid: string}}).auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Must be logged in");
     }
-    
-    const { sessionId } = data;
-    
-    if (!sessionId) {
-      throw new functions.https.HttpsError('invalid-argument', 'Missing sessionId');
-    }
-    
-    const userId = context.auth.uid;
-    
+
+    const {sessionId} = data as unknown as {sessionId: string};
+
+    const userId = (context as unknown as {auth: {uid: string}}).auth?.uid;
+
     const sessionDoc = await db
-      .collection('users')
+      .collection("users")
       .doc(userId)
-      .collection('editingSessions')
+      .collection("editingSessions")
       .doc(sessionId)
       .get();
-    
+
     if (!sessionDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Session not found');
+      throw new functions.https.HttpsError("not-found", "Session not found");
     }
-    
+
     const session = sessionDoc.data() as EditingSession;
-    
+
     // Map history to client-friendly format
-    const history = session.history.map(turn => ({
+    const history = session.history.map((turn) => ({
       role: turn.role,
-      text: turn.parts.find(p => p.text)?.text,
-      imageUrl: turn.parts.find(p => p.imageUrl)?.imageUrl,
+      text: turn.parts.find((p) => p.text)?.text,
+      imageUrl: turn.parts.find((p) => p.imageUrl)?.imageUrl,
       timestamp: turn.timestamp.toDate().toISOString(),
     }));
-    
+
     return {
       sessionId: session.id,
       projectId: session.projectId,
@@ -826,29 +881,23 @@ export const getSessionHistory = functions.https.onCall(
  */
 export const deleteSession = functions.https.onCall(
   async (data, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+    if (!(context as unknown as {auth: {uid: string}}).auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Must be logged in");
     }
-    
-    const { sessionId } = data;
-    
-    if (!sessionId) {
-      throw new functions.https.HttpsError('invalid-argument', 'Missing sessionId');
-    }
-    
-    const userId = context.auth.uid;
-    
+    const {sessionId} = data as unknown as {sessionId: string};
+    const userId = (context as unknown as {auth: {uid: string}}).auth?.uid;
+
     // Delete session document
     await db
-      .collection('users')
+      .collection("users")
       .doc(userId)
-      .collection('editingSessions')
+      .collection("editingSessions")
       .doc(sessionId)
       .delete();
-    
+
     // Note: Associated images in Cloud Storage should be cleaned up
     // via a scheduled function or storage lifecycle rules
-    
-    return { success: true };
+
+    return {success: true};
   }
 );

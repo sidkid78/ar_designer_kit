@@ -216,6 +216,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 export interface UseARBridgeReturn {
   // State
   isSupported: boolean | null;
+  isWebXRSupported: boolean | null;
+  hasAnyARSupport: boolean;
   isScanning: boolean;
   scanProgress: number;
   trackingState: TrackingStateResult | null;
@@ -239,6 +241,7 @@ export interface UseARBridgeReturn {
 
 export function useARBridge(): UseARBridgeReturn {
   const [isSupported, setIsSupported] = useState<boolean | null>(null);
+  const [isWebXRSupported, setIsWebXRSupported] = useState<boolean | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [trackingState, setTrackingState] = useState<TrackingStateResult | null>(null);
@@ -248,6 +251,27 @@ export function useARBridge(): UseARBridgeReturn {
   const [error, setError] = useState<string | null>(null);
   
   const listenersRef = useRef<PluginListenerHandle[]>([]);
+  
+  // Check WebXR support
+  useEffect(() => {
+    let isMounted = true;
+    
+    const checkWebXR = async () => {
+      if (typeof navigator !== 'undefined' && navigator.xr) {
+        try {
+          const supported = await navigator.xr.isSessionSupported('immersive-ar');
+          if (isMounted) setIsWebXRSupported(supported);
+        } catch {
+          if (isMounted) setIsWebXRSupported(false);
+        }
+      } else {
+        if (isMounted) setIsWebXRSupported(false);
+      }
+    };
+    
+    checkWebXR();
+    return () => { isMounted = false; };
+  }, []);
   
   // Setup event listeners
   useEffect(() => {
@@ -442,8 +466,13 @@ export function useARBridge(): UseARBridgeReturn {
     return () => clearInterval(interval);
   }, [isScanning]);
   
+  // Computed: has any AR support (LiDAR or WebXR)
+  const hasAnyARSupport = isSupported === true || isWebXRSupported === true;
+
   return {
     isSupported,
+    isWebXRSupported,
+    hasAnyARSupport,
     isScanning,
     scanProgress,
     trackingState,

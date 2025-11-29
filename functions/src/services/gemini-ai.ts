@@ -4,7 +4,7 @@
 // Updated with Nano Banana (gemini-2.5-flash-image) and Nano Banana Pro (gemini-3-pro-image-preview)
 // Copyright 2024
 
-import { GenerateContentConfig, GoogleGenAI } from '@google/genai';
+import {GenerateContentConfig, GoogleGenAI} from "@google/genai";
 
 // ============================================================================
 // Types
@@ -19,7 +19,7 @@ export interface RecognizedObject {
     maxX: number;
     maxY: number;
   };
-  category: 'architectural' | 'furniture' | 'fixture' | 'other';
+  category: "architectural" | "furniture" | "fixture" | "other";
 }
 
 export interface RoomAnalysis {
@@ -75,12 +75,12 @@ const genai = new GoogleGenAI({});
 // Models
 const MODELS = {
   // Text + Vision (no image generation)
-  FLASH: 'gemini-2.5-flash',
-  PRO: 'gemini-2.5-pro',
-  
+  FLASH: "gemini-2.5-flash",
+  PRO: "gemini-2.5-pro",
+
   // Native Image Generation (Nano Banana)
-  NANO_BANANA: 'gemini-2.5-flash-image',           // Fast image gen/editing
-  NANO_BANANA_PRO: 'gemini-3-pro-image-preview',   // Advanced, thinking mode, up to 14 ref images
+  NANO_BANANA: "gemini-2.5-flash-image", // Fast image gen/editing
+  NANO_BANANA_PRO: "gemini-3-pro-image-preview", // Advanced, thinking mode, up to 14 ref images
 };
 
 // ============================================================================
@@ -93,13 +93,16 @@ const MODELS = {
  */
 export async function recognizeObjects(
   imageData: Buffer,
-  mimeType: string = 'image/jpeg'
+  mimeType = "image/jpeg"
 ): Promise<RecognizedObject[]> {
   const systemPrompt = `You are an expert architectural and interior design feature detector.
 Analyze this room image and identify ALL visible objects and architectural features.
 
 For each detected item, provide:
-- label: specific name (e.g., "wall", "floor", "ceiling", "window", "door", "sofa", "table", "chair", "lamp", "plant", "outlet", "light_switch")
+- label: specific name (
+    e.g., "wall", 
+    "floor", "ceiling", "window", "door", "sofa", "table", "chair", "lamp", "plant", "outlet", "light_switch"
+    )
 - confidence: 0.0 to 1.0 based on detection certainty
 - boundingBox: normalized coordinates (0-1) for minX, minY, maxX, maxY
 - category: one of "architectural", "furniture", "fixture", "other"
@@ -118,20 +121,20 @@ Respond with a JSON array only.`;
     model: MODELS.FLASH,
     contents: [
       {
-        role: 'user',
+        role: "user",
         parts: [
-          { text: systemPrompt },
+          {text: systemPrompt},
           {
             inlineData: {
               mimeType,
-              data: imageData.toString('base64'),
+              data: imageData.toString("base64"),
             },
           },
         ],
       },
     ],
     config: {
-      responseMimeType: 'application/json',
+      responseMimeType: "application/json",
       thinkingConfig: {
         thinkingBudget: 0, // Fast detection, no reasoning needed
       },
@@ -139,11 +142,11 @@ Respond with a JSON array only.`;
   });
 
   try {
-    const objects = JSON.parse(response.text || '[]') as RecognizedObject[];
+    const objects = JSON.parse(response.text || "[]") as RecognizedObject[];
     // Filter low-confidence detections
-    return objects.filter(obj => obj.confidence >= 0.5);
+    return objects.filter((obj) => obj.confidence >= 0.5);
   } catch (e) {
-    console.error('Failed to parse object recognition response:', e);
+    console.error("Failed to parse object recognition response:", e);
     return [];
   }
 }
@@ -158,7 +161,7 @@ Respond with a JSON array only.`;
  */
 export async function analyzeRoom(
   imageData: Buffer,
-  mimeType: string = 'image/jpeg'
+  mimeType = "image/jpeg"
 ): Promise<RoomAnalysis> {
   const systemPrompt = `You are an expert interior designer and architect.
 Analyze this room image and provide:
@@ -181,20 +184,20 @@ Respond with JSON only.`;
     model: MODELS.FLASH,
     contents: [
       {
-        role: 'user',
+        role: "user",
         parts: [
-          { text: systemPrompt },
+          {text: systemPrompt},
           {
             inlineData: {
               mimeType,
-              data: imageData.toString('base64'),
+              data: imageData.toString("base64"),
             },
           },
         ],
       },
     ],
     config: {
-      responseMimeType: 'application/json',
+      responseMimeType: "application/json",
       thinkingConfig: {
         thinkingBudget: 128, // Enable reasoning for analysis
       },
@@ -202,12 +205,12 @@ Respond with JSON only.`;
   });
 
   try {
-    return JSON.parse(response.text || '{}') as RoomAnalysis;
+    return JSON.parse(response.text || "{}") as RoomAnalysis;
   } catch (e) {
-    console.error('Failed to parse room analysis response:', e);
+    console.error("Failed to parse room analysis response:", e);
     return {
-      roomType: 'unknown',
-      dimensions: { estimatedWidth: 0, estimatedLength: 0, estimatedHeight: 0 },
+      roomType: "unknown",
+      dimensions: {estimatedWidth: 0, estimatedLength: 0, estimatedHeight: 0},
       lightingSuggestions: [],
       styleRecommendations: [],
       detectedFeatures: [],
@@ -226,8 +229,8 @@ Respond with JSON only.`;
 export async function generateRoomStyle(
   roomImageData: Buffer,
   stylePrompt: string,
-  mimeType: string = 'image/jpeg',
-  aspectRatio: string = '16:9'
+  mimeType = "image/jpeg",
+  aspectRatio = "16:9"
 ): Promise<{ imageData: Buffer; description: string }> {
   const enhancedPrompt = `Transform this room image according to the following style:
 ${stylePrompt}
@@ -243,20 +246,20 @@ Important guidelines:
     model: MODELS.NANO_BANANA,
     contents: [
       {
-        role: 'user',
+        role: "user",
         parts: [
           {
             inlineData: {
               mimeType,
-              data: roomImageData.toString('base64'),
+              data: roomImageData.toString("base64"),
             },
           },
-          { text: enhancedPrompt },
+          {text: enhancedPrompt},
         ],
       },
     ],
     config: {
-      responseModalities: ['TEXT', 'IMAGE'],
+      responseModalities: ["TEXT", "IMAGE"],
       imageConfig: {
         aspectRatio: aspectRatio as any,
       },
@@ -264,21 +267,21 @@ Important guidelines:
   });
 
   let imageData: Buffer | null = null;
-  let description = '';
+  let description = "";
 
   for (const part of response.candidates?.[0]?.content?.parts || []) {
     if (part.text) {
       description = part.text;
     } else if (part.inlineData) {
-      imageData = Buffer.from(part.inlineData.data!, 'base64');
+      imageData = Buffer.from(part.inlineData.data!, "base64");
     }
   }
 
   if (!imageData) {
-    throw new Error('No image generated');
+    throw new Error("No image generated");
   }
 
-  return { imageData, description };
+  return {imageData, description};
 }
 
 /**
@@ -288,18 +291,18 @@ Important guidelines:
 export async function generateStyleVariations(
   roomImageData: Buffer,
   baseStylePrompt: string,
-  numberOfVariations: number = 3,
-  mimeType: string = 'image/jpeg'
+  numberOfVariations = 3,
+  mimeType = "image/jpeg"
 ): Promise<StyleVariation[]> {
   const variations: StyleVariation[] = [];
-  
+
   // Define style variation modifiers
   const styleModifiers = [
-    { id: 'warm', name: 'Warm & Cozy', modifier: 'with warm earth tones, soft textures, and ambient lighting' },
-    { id: 'cool', name: 'Cool & Modern', modifier: 'with cool tones, clean lines, and minimalist aesthetic' },
-    { id: 'natural', name: 'Natural & Organic', modifier: 'with natural materials, plants, and earthy elements' },
-    { id: 'luxurious', name: 'Luxurious & Elegant', modifier: 'with premium materials, rich colors, and sophisticated details' },
-    { id: 'bright', name: 'Bright & Airy', modifier: 'with light colors, open feel, and maximum natural light' },
+    {id: "warm", name: "Warm & Cozy", modifier: "with warm earth tones, soft textures, and ambient lighting"},
+    {id: "cool", name: "Cool & Modern", modifier: "with cool tones, clean lines, and minimalist aesthetic"},
+    {id: "natural", name: "Natural & Organic", modifier: "with natural materials, plants, and earthy elements"},
+    {id: "luxurious", name: "Luxurious & Elegant", modifier: "with premium materials, rich colors, and sophisticated details"},
+    {id: "bright", name: "Bright & Airy", modifier: "with light colors, open feel, and maximum natural light"},
   ];
 
   const selectedModifiers = styleModifiers.slice(0, numberOfVariations);
@@ -317,38 +320,38 @@ Create a professional interior design visualization that:
         model: MODELS.NANO_BANANA_PRO,
         contents: [
           {
-            role: 'user',
+            role: "user",
             parts: [
               {
                 inlineData: {
                   mimeType,
-                  data: roomImageData.toString('base64'),
+                  data: roomImageData.toString("base64"),
                 },
               },
-              { text: fullPrompt },
+              {text: fullPrompt},
             ],
           },
         ],
         config: {
-          responseModalities: ['TEXT', 'IMAGE'],
+          responseModalities: ["TEXT", "IMAGE"],
           imageConfig: {
-            aspectRatio: '16:9',
-            imageSize: '2K',
+            aspectRatio: "16:9",
+            imageSize: "2K",
           },
         },
       });
 
       let imageData: Buffer | null = null;
-      let description = '';
+      let description = "";
 
       for (const part of response.candidates?.[0]?.content?.parts || []) {
         // Skip thought parts (intermediate reasoning)
         if ((part as any).thought) continue;
-        
+
         if (part.text) {
           description = part.text;
         } else if (part.inlineData) {
-          imageData = Buffer.from(part.inlineData.data!, 'base64');
+          imageData = Buffer.from(part.inlineData.data!, "base64");
         }
       }
 
@@ -356,7 +359,7 @@ Create a professional interior design visualization that:
         variations.push({
           id: modifier.id,
           name: modifier.name,
-          imageUrl: '', // Will be set after upload to Cloud Storage
+          imageUrl: "", // Will be set after upload to Cloud Storage
           description: description || `${baseStylePrompt} ${modifier.modifier}`,
           _imageData: imageData, // Store for later upload
         });
@@ -375,7 +378,7 @@ Create a professional interior design visualization that:
  */
 export async function generateSeamlessTexture(
   materialPrompt: string,
-  resolution: '1K' | '2K' | '4K' = '2K'
+  resolution: "1K" | "2K" | "4K" = "2K"
 ): Promise<Buffer> {
   const enhancedPrompt = `Create a seamless tileable texture for: ${materialPrompt}
 
@@ -388,11 +391,11 @@ Requirements:
 
   const response = await genai.models.generateContent({
     model: MODELS.NANO_BANANA,
-    contents: [{ role: 'user', parts: [{ text: enhancedPrompt }] }],
+    contents: [{role: "user", parts: [{text: enhancedPrompt}]}],
     config: {
-      responseModalities: ['IMAGE'],
+      responseModalities: ["IMAGE"],
       imageConfig: {
-        aspectRatio: '1:1',
+        aspectRatio: "1:1",
         imageSize: resolution,
       },
     },
@@ -400,11 +403,11 @@ Requirements:
 
   for (const part of response.candidates?.[0]?.content?.parts || []) {
     if (part.inlineData) {
-      return Buffer.from(part.inlineData.data!, 'base64');
+      return Buffer.from(part.inlineData.data!, "base64");
     }
   }
 
-  throw new Error('No texture generated');
+  throw new Error("No texture generated");
 }
 
 // ============================================================================
@@ -419,8 +422,8 @@ export function createRoomEditingSession() {
   return genai.chats.create({
     model: MODELS.NANO_BANANA_PRO,
     config: {
-      responseModalities: ['TEXT', 'IMAGE'],
-      tools: [{ googleSearch: {} }], // Enable grounding for product suggestions
+      responseModalities: ["TEXT", "IMAGE"],
+      tools: [{googleSearch: {}}], // Enable grounding for product suggestions
     },
   });
 }
@@ -432,24 +435,24 @@ export async function sendRoomEdit(
   chat: ReturnType<typeof createRoomEditingSession>,
   editPrompt: string,
   newImage?: Buffer,
-  mimeType: string = 'image/jpeg',
+  mimeType = "image/jpeg",
   aspectRatio?: string,
-  imageSize?: '1K' | '2K' | '4K'
+  imageSize?: "1K" | "2K" | "4K"
 ): Promise<{ imageData: Buffer | null; text: string }> {
   const parts: any[] = [];
-  
+
   if (newImage) {
     parts.push({
       inlineData: {
         mimeType,
-        data: newImage.toString('base64'),
+        data: newImage.toString("base64"),
       },
     });
   }
-  parts.push({ text: editPrompt });
+  parts.push({text: editPrompt});
 
   const config: GenerateContentConfig = {
-    responseModalities: ['TEXT', 'IMAGE'],
+    responseModalities: ["TEXT", "IMAGE"],
   };
   if (aspectRatio || imageSize) {
     config.imageConfig = {};
@@ -457,23 +460,23 @@ export async function sendRoomEdit(
     if (imageSize) config.imageConfig.imageSize = imageSize;
   }
 
-  const response = await chat.sendMessage({ message: parts } as any);
+  const response = await chat.sendMessage({message: parts} as any);
 
   let imageData: Buffer | null = null;
-  let text = '';
+  let text = "";
 
   for (const part of response.candidates?.[0]?.content?.parts || []) {
     // Skip thought parts
     if ((part as any).thought) continue;
-    
+
     if (part.text) {
       text += part.text;
     } else if (part.inlineData) {
-      imageData = Buffer.from(part.inlineData.data!, 'base64');
+      imageData = Buffer.from(part.inlineData.data!, "base64");
     }
   }
 
-  return { imageData, text };
+  return {imageData, text};
 }
 
 // ============================================================================
@@ -487,12 +490,12 @@ export async function sendRoomEdit(
 export async function generateFloorPlan(
   imageData: Buffer,
   recognizedObjects: RecognizedObject[],
-  mimeType: string = 'image/jpeg'
+  mimeType = "image/jpeg"
 ): Promise<FloorPlanData> {
   const objectContext = recognizedObjects
-    .filter(obj => ['wall', 'door', 'window', 'floor'].some(type => obj.label.includes(type)))
-    .map(obj => `${obj.label} at (${obj.boundingBox.minX.toFixed(2)}, ${obj.boundingBox.minY.toFixed(2)})`)
-    .join(', ');
+    .filter((obj) => ["wall", "door", "window", "floor"].some((type) => obj.label.includes(type)))
+    .map((obj) => `${obj.label} at (${obj.boundingBox.minX.toFixed(2)}, ${obj.boundingBox.minY.toFixed(2)})`)
+    .join(", ");
 
   const systemPrompt = `You are an expert architect analyzing a room image to generate a 2D floor plan.
 
@@ -512,20 +515,20 @@ Respond with JSON only.`;
     model: MODELS.PRO,
     contents: [
       {
-        role: 'user',
+        role: "user",
         parts: [
-          { text: systemPrompt },
+          {text: systemPrompt},
           {
             inlineData: {
               mimeType,
-              data: imageData.toString('base64'),
+              data: imageData.toString("base64"),
             },
           },
         ],
       },
     ],
     config: {
-      responseMimeType: 'application/json',
+      responseMimeType: "application/json",
       thinkingConfig: {
         thinkingBudget: 256, // Extended reasoning for spatial analysis
       },
@@ -533,14 +536,14 @@ Respond with JSON only.`;
   });
 
   try {
-    return JSON.parse(response.text || '{}') as FloorPlanData;
+    return JSON.parse(response.text || "{}") as FloorPlanData;
   } catch (e) {
-    console.error('Failed to parse floor plan response:', e);
+    console.error("Failed to parse floor plan response:", e);
     return {
       walls: [],
       doors: [],
       windows: [],
-      dimensions: { width: 0, length: 0 },
+      dimensions: {width: 0, length: 0},
     };
   }
 }
@@ -556,26 +559,26 @@ Respond with JSON only.`;
 export async function getProductRecommendations(
   roomAnalysis: RoomAnalysis,
   userPreferences: {
-    budget?: 'low' | 'medium' | 'high' | 'luxury';
+    budget?: "low" | "medium" | "high" | "luxury";
     style?: string;
     priorities?: string[];
   }
 ): Promise<ProductRecommendation[]> {
   const budgetRange = {
-    low: 'budget-friendly under $500',
-    medium: 'mid-range $500-2000',
-    high: 'premium $2000-5000',
-    luxury: 'luxury over $5000',
+    low: "budget-friendly under $500",
+    medium: "mid-range $500-2000",
+    high: "premium $2000-5000",
+    luxury: "luxury over $5000",
   };
 
   const prompt = `Based on this room analysis and user preferences, recommend specific furniture and decor products.
 
 Room Type: ${roomAnalysis.roomType}
 Room Dimensions: ${roomAnalysis.dimensions.estimatedWidth}m x ${roomAnalysis.dimensions.estimatedLength}m
-Style Recommendations: ${roomAnalysis.styleRecommendations.join(', ')}
-User Preferred Style: ${userPreferences.style || 'Not specified'}
-Budget Range: ${userPreferences.budget ? budgetRange[userPreferences.budget] : 'Not specified'}
-Priorities: ${userPreferences.priorities?.join(', ') || 'Not specified'}
+Style Recommendations: ${roomAnalysis.styleRecommendations.join(", ")}
+User Preferred Style: ${userPreferences.style || "Not specified"}
+Budget Range: ${userPreferences.budget ? budgetRange[userPreferences.budget] : "Not specified"}
+Priorities: ${userPreferences.priorities?.join(", ") || "Not specified"}
 
 Provide 5-8 specific product recommendations with:
 - Actual product names and brands
@@ -589,18 +592,18 @@ Respond with a JSON array of recommendations.`;
 
   const response = await genai.models.generateContent({
     model: MODELS.NANO_BANANA_PRO,
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    contents: [{role: "user", parts: [{text: prompt}]}],
     config: {
-      responseModalities: ['TEXT'],
-      tools: [{ googleSearch: {} }],
-      responseMimeType: 'application/json',
+      responseModalities: ["TEXT"],
+      tools: [{googleSearch: {}}],
+      responseMimeType: "application/json",
     },
   });
 
   try {
-    return JSON.parse(response.text || '[]') as ProductRecommendation[];
+    return JSON.parse(response.text || "[]") as ProductRecommendation[];
   } catch (e) {
-    console.error('Failed to parse product recommendations:', e);
+    console.error("Failed to parse product recommendations:", e);
     return [];
   }
 }
@@ -615,28 +618,28 @@ Respond with a JSON array of recommendations.`;
  */
 export async function batchRecognizeObjects(
   frames: Array<{ data: Buffer; mimeType: string }>,
-  batchSize: number = 5
+  batchSize = 5
 ): Promise<RecognizedObject[]> {
   const allObjects: RecognizedObject[] = [];
-  
+
   for (let i = 0; i < frames.length; i += batchSize) {
     const batch = frames.slice(i, i + batchSize);
-    const batchPromises = batch.map(frame => 
+    const batchPromises = batch.map((frame) =>
       recognizeObjects(frame.data, frame.mimeType)
     );
-    
+
     const batchResults = await Promise.all(batchPromises);
-    
+
     for (const objects of batchResults) {
       allObjects.push(...objects);
     }
-    
+
     // Small delay between batches to avoid rate limiting
     if (i + batchSize < frames.length) {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
-  
+
   // Deduplicate based on spatial proximity
   return mergeDetections(allObjects);
 }
@@ -647,19 +650,19 @@ export async function batchRecognizeObjects(
 function mergeDetections(objects: RecognizedObject[]): RecognizedObject[] {
   const merged: RecognizedObject[] = [];
   const used = new Set<number>();
-  
+
   for (let i = 0; i < objects.length; i++) {
     if (used.has(i)) continue;
-    
+
     const current = objects[i];
     let bestConfidence = current.confidence;
     let bestObject = current;
-    
+
     for (let j = i + 1; j < objects.length; j++) {
       if (used.has(j)) continue;
-      
+
       const other = objects[j];
-      
+
       // Check if same label and spatially close
       if (current.label === other.label && isSpatiallyClose(current.boundingBox, other.boundingBox, 0.1)) {
         used.add(j);
@@ -669,25 +672,25 @@ function mergeDetections(objects: RecognizedObject[]): RecognizedObject[] {
         }
       }
     }
-    
+
     merged.push(bestObject);
   }
-  
+
   return merged;
 }
 
 function isSpatiallyClose(
-  box1: RecognizedObject['boundingBox'],
-  box2: RecognizedObject['boundingBox'],
+  box1: RecognizedObject["boundingBox"],
+  box2: RecognizedObject["boundingBox"],
   threshold: number
 ): boolean {
-  const center1 = { x: (box1.minX + box1.maxX) / 2, y: (box1.minY + box1.maxY) / 2 };
-  const center2 = { x: (box2.minX + box2.maxX) / 2, y: (box2.minY + box2.maxY) / 2 };
-  
+  const center1 = {x: (box1.minX + box1.maxX) / 2, y: (box1.minY + box1.maxY) / 2};
+  const center2 = {x: (box2.minX + box2.maxX) / 2, y: (box2.minY + box2.maxY) / 2};
+
   const distance = Math.sqrt(
     Math.pow(center1.x - center2.x, 2) + Math.pow(center1.y - center2.y, 2)
   );
-  
+
   return distance < threshold;
 }
 

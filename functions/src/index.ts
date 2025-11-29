@@ -2,14 +2,14 @@
 // AR Designer Kit - Firebase Cloud Functions
 // Copyright 2024
 
-import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
-import { onTaskDispatched } from 'firebase-functions/v2/tasks';
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { getFunctions } from 'firebase-admin/functions';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { getStorage } from 'firebase-admin/storage';
-import * as admin from 'firebase-admin';
-import Stripe from 'stripe';
+import {onDocumentCreated} from "firebase-functions/v2/firestore";
+import {onTaskDispatched} from "firebase-functions/v2/tasks";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
+import {getFunctions} from "firebase-admin/functions";
+import {getFirestore, FieldValue} from "firebase-admin/firestore";
+import {getStorage} from "firebase-admin/storage";
+import * as admin from "firebase-admin";
+import Stripe from "stripe";
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -29,9 +29,21 @@ export {
   analyzeAndCreateSession,
   getSessionHistory,
   deleteSession,
-} from './room-editing';
+} from "./room-editing";
 const storage = getStorage();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
+
+// Lazy initialization for Stripe to avoid errors during Firebase code analysis
+let stripeInstance: Stripe | null = null;
+function getStripe(): Stripe {
+  if (!stripeInstance) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) {
+      throw new Error("STRIPE_SECRET_KEY environment variable is not set");
+    }
+    stripeInstance = new Stripe(key, {apiVersion: "2025-02-24.acacia"});
+  }
+  return stripeInstance;
+}
 
 // ============================================================================
 // Types
@@ -40,7 +52,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10
 interface ScanDocument {
   projectId: string;
   userId: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: "pending" | "processing" | "completed" | "failed";
   rawScanFileUrl: string;
   recognizedObjects?: RecognizedObject[];
   processedAt?: FirebaseFirestore.Timestamp;
@@ -56,7 +68,7 @@ interface RecognizedObject {
     maxX: number;
     maxY: number;
   };
-  category: 'architectural' | 'furniture' | 'fixture' | 'other';
+  category: "architectural" | "furniture" | "fixture" | "other";
 }
 
 interface DesignDocument {
@@ -64,7 +76,7 @@ interface DesignDocument {
   userId: string;
   baseScanId: string;
   stylePrompt: string;
-  status: 'pending' | 'generating' | 'completed' | 'failed';
+  status: "pending" | "generating" | "completed" | "failed";
   generatedTextures?: GeneratedTexture[];
 }
 
@@ -75,7 +87,7 @@ interface GeneratedTexture {
 }
 
 interface AITaskPayload {
-  type: 'object_recognition' | 'style_generation' | 'floor_plan';
+  type: "object_recognition" | "style_generation" | "floor_plan";
   projectId: string;
   documentId: string;
   userId: string;
@@ -91,27 +103,27 @@ interface AITaskPayload {
  * When a new scan is created, enqueue object recognition task
  */
 export const onScanCreated = onDocumentCreated(
-  'projects/{projectId}/scans/{scanId}',
+  "projects/{projectId}/scans/{scanId}",
   async (event) => {
     const snapshot = event.data;
     if (!snapshot) return;
 
     const scan = snapshot.data() as ScanDocument;
-    const { projectId, scanId } = event.params;
+    const {projectId, scanId} = event.params;
 
     console.log(`[onScanCreated] New scan: ${projectId}/${scanId}`);
 
     // Update status to processing
     await snapshot.ref.update({
-      status: 'processing',
+      status: "processing",
       processingStartedAt: FieldValue.serverTimestamp(),
     });
 
     // Enqueue object recognition task
-    const queue = getFunctions().taskQueue('processAIScan');
-    
+    const queue = getFunctions().taskQueue("processAIScan");
+
     const payload: AITaskPayload = {
-      type: 'object_recognition',
+      type: "object_recognition",
       projectId,
       documentId: scanId,
       userId: scan.userId,
@@ -120,7 +132,7 @@ export const onScanCreated = onDocumentCreated(
 
     await queue.enqueue(payload, {
       dispatchDeadlineSeconds: 60 * 5, // 5 minute timeout
-      uri: await getTaskHandlerUri('processAIScan'),
+      uri: await getTaskHandlerUri("processAIScan"),
     });
 
     console.log(`[onScanCreated] Task enqueued for scan: ${scanId}`);
@@ -131,27 +143,27 @@ export const onScanCreated = onDocumentCreated(
  * When a new design is created, enqueue style generation task
  */
 export const onDesignCreated = onDocumentCreated(
-  'projects/{projectId}/designs/{designId}',
+  "projects/{projectId}/designs/{designId}",
   async (event) => {
     const snapshot = event.data;
     if (!snapshot) return;
 
     const design = snapshot.data() as DesignDocument;
-    const { projectId, designId } = event.params;
+    const {projectId, designId} = event.params;
 
     console.log(`[onDesignCreated] New design: ${projectId}/${designId}`);
 
     // Update status to generating
     await snapshot.ref.update({
-      status: 'generating',
+      status: "generating",
       generationStartedAt: FieldValue.serverTimestamp(),
     });
 
     // Enqueue style generation task
-    const queue = getFunctions().taskQueue('processAIDesign');
-    
+    const queue = getFunctions().taskQueue("processAIDesign");
+
     const payload: AITaskPayload = {
-      type: 'style_generation',
+      type: "style_generation",
       projectId,
       documentId: designId,
       userId: design.userId,
@@ -160,7 +172,7 @@ export const onDesignCreated = onDocumentCreated(
 
     await queue.enqueue(payload, {
       dispatchDeadlineSeconds: 60 * 5,
-      uri: await getTaskHandlerUri('processAIDesign'),
+      uri: await getTaskHandlerUri("processAIDesign"),
     });
 
     console.log(`[onDesignCreated] Task enqueued for design: ${designId}`);
@@ -184,12 +196,12 @@ export const processAIScan = onTaskDispatched(
     rateLimits: {
       maxConcurrentDispatches: 10,
     },
-    memory: '1GiB',
+    memory: "1GiB",
     timeoutSeconds: 300,
   },
   async (req) => {
     const payload = req.data as AITaskPayload;
-    const { projectId, documentId, inputUrl } = payload;
+    const {projectId, documentId, inputUrl} = payload;
 
     console.log(`[processAIScan] Processing scan: ${projectId}/${documentId}`);
 
@@ -197,30 +209,29 @@ export const processAIScan = onTaskDispatched(
 
     try {
       // Import Gemini AI service
-      const { GeminiAIService } = await import('./services/gemini-ai');
-      const gemini = new GeminiAIService();
+      const {default: GeminiAIService} = await import("./services/gemini-ai.js");
+      const gemini = GeminiAIService;
 
       // Download scan image from Cloud Storage
-      const imageBuffer = await downloadFromStorage(inputUrl!);
+      const imageBuffer = await downloadFromStorage(inputUrl as string);
 
       // Run object recognition with Gemini
       const recognizedObjects = await gemini.recognizeObjects(imageBuffer);
 
       // Update Firestore with results
       await scanRef.update({
-        status: 'completed',
+        status: "completed",
         recognizedObjects,
         processedAt: FieldValue.serverTimestamp(),
       });
 
       console.log(`[processAIScan] Completed scan: ${documentId}, found ${recognizedObjects.length} objects`);
-
     } catch (error) {
-      console.error(`[processAIScan] Failed:`, error);
+      console.error("[processAIScan] Failed:", error);
 
       await scanRef.update({
-        status: 'failed',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        status: "failed",
+        error: error instanceof Error ? error.message : "Unknown error",
         failedAt: FieldValue.serverTimestamp(),
       });
 
@@ -242,12 +253,12 @@ export const processAIDesign = onTaskDispatched(
     rateLimits: {
       maxConcurrentDispatches: 5, // Lower limit for expensive generation
     },
-    memory: '2GiB',
+    memory: "2GiB",
     timeoutSeconds: 300,
   },
   async (req) => {
     const payload = req.data as AITaskPayload;
-    const { projectId, documentId, prompt } = payload;
+    const {projectId, documentId, prompt} = payload;
 
     console.log(`[processAIDesign] Processing design: ${projectId}/${documentId}`);
 
@@ -263,12 +274,12 @@ export const processAIDesign = onTaskDispatched(
       const scan = scanDoc.data() as ScanDocument;
 
       // Import Gemini AI service
-      const { GeminiAIService } = await import('./services/gemini-ai');
-      const gemini = new GeminiAIService();
+      const {default: GeminiAIService} = await import("./services/gemini-ai.js");
+      const gemini = GeminiAIService;
 
       // Get recognized surfaces from scan
       const surfaces = scan.recognizedObjects?.filter(
-        obj => ['wall', 'floor', 'ceiling'].includes(obj.label)
+        (obj) => ["wall", "floor", "ceiling"].includes(obj.label)
       ) || [];
 
       // Generate textures for each surface type
@@ -276,9 +287,9 @@ export const processAIDesign = onTaskDispatched(
 
       for (const surface of surfaces) {
         const enhancedPrompt = `${prompt}, ${surface.label} texture, seamless, high quality, photorealistic`;
-        
-        const textureBuffer = await gemini.generateStyleTexture(enhancedPrompt);
-        
+
+        const textureBuffer = await gemini.generateSeamlessTexture(enhancedPrompt);
+
         // Upload to Cloud Storage
         const textureUrl = await uploadToStorage(
           textureBuffer,
@@ -297,19 +308,18 @@ export const processAIDesign = onTaskDispatched(
 
       // Update Firestore with results
       await designRef.update({
-        status: 'completed',
+        status: "completed",
         generatedTextures,
         completedAt: FieldValue.serverTimestamp(),
       });
 
       console.log(`[processAIDesign] Completed design: ${documentId}, generated ${generatedTextures.length} textures`);
-
     } catch (error) {
-      console.error(`[processAIDesign] Failed:`, error);
+      console.error("[processAIDesign] Failed:", error);
 
       await designRef.update({
-        status: 'failed',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        status: "failed",
+        error: error instanceof Error ? error.message : "Unknown error",
         failedAt: FieldValue.serverTimestamp(),
       });
 
@@ -326,16 +336,16 @@ export const processAIDesign = onTaskDispatched(
  * Create Stripe checkout session for Pro subscription
  */
 export const createCheckoutSession = onCall(
-  { enforceAppCheck: true },
+  {enforceAppCheck: true},
   async (request) => {
     if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Must be authenticated');
+      throw new HttpsError("unauthenticated", "Must be authenticated");
     }
 
-    const { priceId, successUrl, cancelUrl } = request.data;
+    const {priceId, successUrl, cancelUrl} = request.data;
 
     if (!priceId || !successUrl || !cancelUrl) {
-      throw new HttpsError('invalid-argument', 'Missing required parameters');
+      throw new HttpsError("invalid-argument", "Missing required parameters");
     }
 
     const userId = request.auth.uid;
@@ -343,36 +353,36 @@ export const createCheckoutSession = onCall(
     // Get or create Stripe customer
     const userDoc = await db.doc(`users/${userId}`).get();
     const userData = userDoc.data();
-    
+
     let customerId = userData?.subscription?.stripeCustomerId;
 
     if (!customerId) {
-      const customer = await stripe.customers.create({
+      const customer = await getStripe().customers.create({
         email: request.auth.token.email,
-        metadata: { firebaseUserId: userId },
+        metadata: {firebaseUserId: userId},
       });
       customerId = customer.id;
 
       await db.doc(`users/${userId}`).update({
-        'subscription.stripeCustomerId': customerId,
+        "subscription.stripeCustomerId": customerId,
       });
     }
 
     // Create checkout session
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       customer: customerId,
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: 'subscription',
+      payment_method_types: ["card"],
+      line_items: [{price: priceId, quantity: 1}],
+      mode: "subscription",
       success_url: successUrl,
       cancel_url: cancelUrl,
-      metadata: { userId },
+      metadata: {userId},
       subscription_data: {
-        metadata: { userId },
+        metadata: {userId},
       },
     });
 
-    return { sessionId: session.id, url: session.url };
+    return {sessionId: session.id, url: session.url};
   }
 );
 
@@ -380,98 +390,98 @@ export const createCheckoutSession = onCall(
  * Stripe webhook handler
  */
 export const stripeWebhook = onCall(async (request) => {
-  const sig = request.rawRequest?.headers['stripe-signature'];
+  const sig = request.rawRequest?.headers["stripe-signature"];
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!sig || !endpointSecret) {
-    throw new HttpsError('invalid-argument', 'Missing signature');
+    throw new HttpsError("invalid-argument", "Missing signature");
   }
 
   let event: Stripe.Event;
 
   try {
-    const rawBody = (request.rawRequest as any)?.rawBody;
-    event = stripe.webhooks.constructEvent(rawBody, sig, endpointSecret);
+    const rawBody = (request.rawRequest as unknown as {rawBody: string})?.rawBody;
+    event = getStripe().webhooks.constructEvent(rawBody, sig, endpointSecret);
   } catch (err) {
-    throw new HttpsError('invalid-argument', 'Webhook signature verification failed');
+    throw new HttpsError("invalid-argument", "Webhook signature verification failed");
   }
 
   console.log(`[stripeWebhook] Event: ${event.type}`);
 
   switch (event.type) {
-    case 'checkout.session.completed': {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const userId = session.metadata?.userId;
+  case "checkout.session.completed": {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const userId = session.metadata?.userId;
 
-      if (userId && session.subscription) {
-        const subscription = await stripe.subscriptions.retrieve(
+    if (userId && session.subscription) {
+      const subscription = await getStripe().subscriptions.retrieve(
           session.subscription as string
-        );
-
-        await db.doc(`users/${userId}`).update({
-          'subscription.status': 'active',
-          'subscription.plan': 'pro',
-          'subscription.stripeSubscriptionId': subscription.id,
-          'subscription.currentPeriodEnd': new Date(subscription.current_period_end * 1000),
-          'subscription.cancelAtPeriodEnd': subscription.cancel_at_period_end,
-        });
-
-        console.log(`[stripeWebhook] User ${userId} subscribed to Pro`);
-      }
-      break;
-    }
-
-    case 'customer.subscription.updated':
-    case 'customer.subscription.deleted': {
-      const subscription = event.data.object as Stripe.Subscription;
-      const userId = subscription.metadata?.userId;
-
-      if (userId) {
-        const status = subscription.status === 'active' ? 'active' :
-                       subscription.status === 'canceled' ? 'canceled' :
-                       subscription.status === 'past_due' ? 'past_due' : 'inactive';
-
-        await db.doc(`users/${userId}`).update({
-          'subscription.status': status,
-          'subscription.currentPeriodEnd': new Date(subscription.current_period_end * 1000),
-          'subscription.cancelAtPeriodEnd': subscription.cancel_at_period_end,
-        });
-
-        console.log(`[stripeWebhook] User ${userId} subscription updated: ${status}`);
-      }
-      break;
-    }
-
-    case 'invoice.payment_failed': {
-      const invoice = event.data.object as Stripe.Invoice;
-      const subscription = await stripe.subscriptions.retrieve(
-        invoice.subscription as string
       );
-      const userId = subscription.metadata?.userId;
 
-      if (userId) {
-        await db.doc(`users/${userId}`).update({
-          'subscription.status': 'past_due',
-        });
+      await db.doc(`users/${userId}`).update({
+        "subscription.status": "active",
+        "subscription.plan": "pro",
+        "subscription.stripeSubscriptionId": subscription.id,
+        "subscription.currentPeriodEnd": new Date(subscription.current_period_end * 1000),
+        "subscription.cancelAtPeriodEnd": subscription.cancel_at_period_end,
+      });
 
-        // TODO: Send email notification
-        console.log(`[stripeWebhook] User ${userId} payment failed`);
-      }
-      break;
+      console.log(`[stripeWebhook] User ${userId} subscribed to Pro`);
     }
+    break;
   }
 
-  return { received: true };
+  case "customer.subscription.updated":
+  case "customer.subscription.deleted": {
+    const subscription = event.data.object as Stripe.Subscription;
+    const userId = subscription.metadata?.userId;
+
+    if (userId) {
+      const status = subscription.status === "active" ? "active" :
+        subscription.status === "canceled" ? "canceled" :
+          subscription.status === "past_due" ? "past_due" : "inactive";
+
+      await db.doc(`users/${userId}`).update({
+        "subscription.status": status,
+        "subscription.currentPeriodEnd": new Date(subscription.current_period_end * 1000),
+        "subscription.cancelAtPeriodEnd": subscription.cancel_at_period_end,
+      });
+
+      console.log(`[stripeWebhook] User ${userId} subscription updated: ${status}`);
+    }
+    break;
+  }
+
+  case "invoice.payment_failed": {
+    const invoice = event.data.object as Stripe.Invoice;
+    const subscription = await getStripe().subscriptions.retrieve(
+        invoice.subscription as string
+    );
+    const userId = subscription.metadata?.userId;
+
+    if (userId) {
+      await db.doc(`users/${userId}`).update({
+        "subscription.status": "past_due",
+      });
+
+      // TODO: Send email notification
+      console.log(`[stripeWebhook] User ${userId} payment failed`);
+    }
+    break;
+  }
+  }
+
+  return {received: true};
 });
 
 /**
  * Cancel subscription
  */
 export const cancelSubscription = onCall(
-  { enforceAppCheck: true },
+  {enforceAppCheck: true},
   async (request) => {
     if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Must be authenticated');
+      throw new HttpsError("unauthenticated", "Must be authenticated");
     }
 
     const userId = request.auth.uid;
@@ -479,17 +489,17 @@ export const cancelSubscription = onCall(
     const subscriptionId = userDoc.data()?.subscription?.stripeSubscriptionId;
 
     if (!subscriptionId) {
-      throw new HttpsError('not-found', 'No active subscription');
+      throw new HttpsError("not-found", "No active subscription");
     }
 
     // Cancel at period end (don't immediately revoke access)
-    const subscription = await stripe.subscriptions.update(subscriptionId, {
+    const subscription = await getStripe().subscriptions.update(subscriptionId, {
       cancel_at_period_end: true,
     });
 
     await db.doc(`users/${userId}`).update({
-      'subscription.cancelAtPeriodEnd': true,
-      'subscription.canceledAt': FieldValue.serverTimestamp(),
+      "subscription.cancelAtPeriodEnd": true,
+      "subscription.canceledAt": FieldValue.serverTimestamp(),
     });
 
     return {
@@ -505,15 +515,15 @@ export const cancelSubscription = onCall(
 
 async function getTaskHandlerUri(functionName: string): Promise<string> {
   const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
-  const location = process.env.FUNCTION_REGION || 'us-central1';
-  
+  const location = process.env.FUNCTION_REGION || "us-central1";
+
   return `https://${location}-${projectId}.cloudfunctions.net/${functionName}`;
 }
 
 async function downloadFromStorage(gsUrl: string): Promise<Buffer> {
   const bucket = storage.bucket();
-  const filePath = gsUrl.replace('gs://', '').split('/').slice(1).join('/');
-  
+  const filePath = gsUrl.replace("gs://", "").split("/").slice(1).join("/");
+
   const [buffer] = await bucket.file(filePath).download();
   return buffer;
 }
@@ -521,16 +531,16 @@ async function downloadFromStorage(gsUrl: string): Promise<Buffer> {
 async function uploadToStorage(buffer: Buffer, path: string): Promise<string> {
   const bucket = storage.bucket();
   const file = bucket.file(path);
-  
+
   await file.save(buffer, {
-    contentType: 'image/jpeg',
+    contentType: "image/jpeg",
     metadata: {
-      cacheControl: 'public, max-age=31536000',
+      cacheControl: "public, max-age=31536000",
     },
   });
 
   await file.makePublic();
-  
+
   return `https://storage.googleapis.com/${bucket.name}/${path}`;
 }
 

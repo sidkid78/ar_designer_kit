@@ -1,0 +1,8 @@
+# Capacitor native projects
+android/
+ios/
+
+# Build caches
+.next/
+node_modules/
+

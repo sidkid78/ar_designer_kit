@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AR Designer Kit</string>
+    <string name="title_activity_main">AR Designer Kit</string>
+    <string name="package_name">com.ardesignerkit.app</string>
+    <string name="custom_url_scheme">com.ardesignerkit.app</string>
+</resources>

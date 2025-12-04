@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- C:/Users/sidki/source/repos/AR_designer_kit/frontend/android/app/src/main/res/values/themes.xml -->
+
+<resources>
+
+    <!-- 1. Base application theme using Material3. -->
+    <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Custom colors from your original styles.xml -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+        <!-- Add other customizations here if needed -->
+    </style>
+
+    <!-- 2. Theme for your main activity after the splash screen. -->
+    <style name="AppTheme.NoActionBar" parent="AppTheme">
+        <!-- This style inherits from AppTheme, so no need to repeat windowNoTitle etc. -->
+        <!-- You can add specific overrides here if the main activity needs to look different. -->
+    </style>
+
+    <!-- 3. The new, correct Splash Screen theme. -->
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <!-- Sets the splash screen's background color -->
+        <item name="windowSplashScreenBackground">@color/colorPrimary</item>
+        <!-- Sets the icon to display -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash</item>
+        <!-- Defines which theme to use after the splash screen finishes -->
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+
+</resources>

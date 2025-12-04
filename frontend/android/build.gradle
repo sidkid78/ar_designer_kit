@@ -1,0 +1,61 @@
+// Top-level build file for AR Designer Kit
+// 16KB Page Size Compliant Configuration
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // CRITICAL: AGP 8.5.1+ required for 16KB page size compliance
+        // AGP 8.5.1+ automatically enables 16KB alignment for packaging
+        classpath 'com.android.tools.build:gradle:8.13.1'
+        
+        // Kotlin plugin
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25'
+    }
+}
+
+plugins {
+    id 'com.android.application' version '8.13.1' apply false
+    id 'com.android.library' version '8.13.1' apply false
+    id 'org.jetbrains.kotlin.android' version '1.9.25' apply false
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.buildDir
+}
+
+// ============================================================
+// 16KB PAGE SIZE COMPLIANCE NOTES
+// ============================================================
+// 
+// Starting November 1, 2025, all apps targeting Android 15+
+// must support 16KB page sizes.
+//
+// Requirements met in this configuration:
+// ✓ Android Gradle Plugin 8.5.1+ (using 8.7.3)
+// ✓ NDK r28+ configured in app/build.gradle
+// ✓ Compressed JNI libraries as fallback
+//
+// To verify compliance:
+// 1. Build release APK/AAB
+// 2. Android Studio > Build > Analyze APK
+// 3. Check lib/ folder for 16KB warnings
+// 4. Upload to Play Console to verify
+//
+// Common issues:
+// - Old Sceneform SDK (DEPRECATED - do not use)
+// - Old ML Kit versions
+// - Third-party SDKs with native code
+//
+// Workaround for non-compliant libraries:
+// Use useLegacyPackaging = true in packagingOptions
+// ============================================================

@@ -1,0 +1,156 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.ardesignerkit.app'
+    compileSdk 35
+    
+    // CRITICAL: Required for 16KB page size compliance
+    ndkVersion "28.0.13004108"  // NDK r28+ for 16KB alignment
+
+    defaultConfig {
+        applicationId "com.ardesignerkit.app"
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        
+        // NDK ABI filters - only 64-bit for modern devices
+        ndk {
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
+        }
+    }
+    
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    
+    buildFeatures {
+        viewBinding true
+    }
+    
+    // ============================================================
+    // 16KB PAGE SIZE COMPLIANCE - Choose ONE of these options:
+    // ============================================================
+    
+    // OPTION 1: Compress shared libraries (RECOMMENDED WORKAROUND)
+    // This avoids 16KB alignment issues by compressing .so files
+    // Works even if dependencies have non-compliant libraries
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true  // Compresses .so files
+        }
+        
+        // Exclude known non-compliant libraries if using ML Kit
+        // Uncomment if you get specific library errors:
+        // exclude 'lib/arm64-v8a/libmlkitcommonpipeline.so'
+        // exclude 'lib/x86_64/libmlkitcommonpipeline.so'
+    }
+    
+    // OPTION 2: If all your dependencies are 16KB-compliant,
+    // you can use uncompressed for better performance:
+    // packagingOptions {
+    //     jniLibs {
+    //         useLegacyPackaging = false  // Uncompressed, requires 16KB alignment
+    //     }
+    // }
+    
+    // Lint configuration
+    lint {
+        // Check for 16KB alignment issues
+        checkDependencies = true
+        abortOnError = false
+        warningsAsErrors = false
+    }
+}
+
+dependencies {
+    // Capacitor Core
+    implementation project(':capacitor-android')
+    implementation "androidx.coordinatorlayout:coordinatorlayout:1.2.0"
+    implementation 'androidx.core:core-splashscreen:1.0.1'
+    // AndroidX Core Libraries
+    implementation 'androidx.core:core-ktx:1.15.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    
+    // ConstraintLayout - Required for AR scan layout
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    
+    // ============================================================
+    // ARCore - Latest version (16KB compatible as of 1.46+)
+    // ============================================================
+    implementation 'com.google.ar:core:1.51.0'
+    
+    // ============================================================
+    // DO NOT USE - DEPRECATED, NOT 16KB COMPATIBLE:
+    // - com.google.ar.sceneform:*
+    // - com.google.ar.sceneform.ux:*
+    // - io.github.sceneview:arsceneview:*
+    // ============================================================
+    
+    // Kotlin Coroutines
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1'
+    
+    // Lifecycle
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
+    
+    // JSON serialization
+    implementation 'com.google.code.gson:gson:2.11.0'
+    
+    // ============================================================
+    // ML Kit - Use latest version for 16KB compliance
+    // If you still get errors, exclude the problematic library
+    // or remove ML Kit entirely
+    // ============================================================
+    // implementation 'com.google.mlkit:object-detection:17.0.2'
+    
+    // Testing
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+}
+
+// ============================================================
+// VERIFICATION TASK - Check 16KB alignment
+// Run: ./gradlew check16KBAlignment
+// ============================================================
+tasks.register('check16KBAlignment') {
+    doLast {
+        println "============================================"
+        println "16KB Page Size Compliance Checklist:"
+        println "============================================"
+        println "✓ AGP Version: 8.5.1+ required (check project build.gradle)"
+        println "✓ NDK Version: r28+ (${android.ndkVersion})"
+        println "✓ Target SDK: ${android.defaultConfig.targetSdk}"
+        println "✓ JNI Legacy Packaging: ${android.packagingOptions.jniLibs.useLegacyPackaging}"
+        println ""
+        println "To verify APK alignment, use Android Studio:"
+        println "Build > Analyze APK > Check lib/ folder for warnings"
+        println ""
+        println "Or use command line:"
+        println "zipalign -c -P 16 -v 4 app-release.apk"
+        println "============================================"
+    }
+}

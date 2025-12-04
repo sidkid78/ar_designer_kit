@@ -103,15 +103,15 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isLatest }) => {
                 className="relative group cursor-pointer"
                 onClick={() => setPreviewImage(message.imageUrl!)}
               >
-                <Image
-                  title="Generated room"
-                  width={100}
-                  height={100}
-                  src={message.imageUrl}
-                  alt="Generated room"
-                  className="rounded-lg max-w-full"
-                  style={{ maxHeight: '300px' }}
-                />
+                <div className="relative w-full h-auto">
+                  <Image
+                    src={message.imageUrl} 
+                    alt="Generate room"
+                    width={1200}
+                    height={800}
+                    className="max-w-full max-h-[90vh] object-contain rounded-lg" 
+              />
+                </div>
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors rounded-lg flex items-center justify-center">
                   <span className="opacity-0 group-hover:opacity-100 text-white text-sm font-medium bg-black/50 px-3 py-1 rounded-full">
                     Click to expand

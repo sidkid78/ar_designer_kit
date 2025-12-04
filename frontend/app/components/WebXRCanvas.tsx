@@ -21,7 +21,7 @@
 
 import React, { Suspense, useRef, useState, useCallback, useEffect } from 'react';
 import { Canvas, extend } from '@react-three/fiber';
-import { XR, createXRStore, useHitTest, useXR } from '@react-three/xr';
+import { XR, createXRStore, useXRHitTest, useXR } from '@react-three/xr';
 import { OrbitControls, Grid, Environment, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 
@@ -80,7 +80,7 @@ interface HitTestReticleProps {
 function HitTestReticle({ onHitTest, visible }: HitTestReticleProps) {
   const reticleRef = useRef<THREE.Object3D>(null);
   
-  useHitTest((hitMatrix: THREE.Matrix4) => {
+  useXRHitTest((hitMatrix: THREE.Matrix4) => {
     if (reticleRef.current) {
       hitMatrix.decompose(
         reticleRef.current.position,

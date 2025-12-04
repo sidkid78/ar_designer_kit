@@ -9,12 +9,14 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../hooks/useAuth';
 
 export default function HomePage() {
-  const { user, loading, signInWithGoogle } = useAuth();
+  const { user, loading, signInWithGoogle, signOut } = useAuth();
   const router = useRouter();
 
   // Redirect authenticated users to projects
   useEffect(() => {
+    console.log('[Home] Auth state - loading:', loading, 'user:', user?.email ?? 'null');
     if (!loading && user) {
+      console.log('[Home] Redirecting to /projects...');
       router.push('/projects');
     }
   }, [user, loading, router]);
@@ -23,6 +25,28 @@ export default function HomePage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
+  // Debug: Show auth state (remove after testing)
+  if (user) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
+        <p className="text-green-600 font-bold">✓ Logged in as: {user.email}</p>
+        <p className="text-gray-500">Redirecting to projects...</p>
+        <button 
+          onClick={() => router.push('/projects')}
+          className="px-4 py-2 bg-blue-600 text-white rounded"
+        >
+          Go to Projects Manually
+        </button>
+        <button 
+          onClick={() => signOut()}
+          className="px-4 py-2 bg-red-600 text-white rounded"
+        >
+          Sign Out
+        </button>
       </div>
     );
   }

@@ -7,13 +7,40 @@
  * Orchestrates the AR view, tools, panels, and overall UX flow.
  */
 
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { useARStore, type ViewMode } from '@/stores/useARStore';
 import { PlacedObject, useProjectStore } from '@/stores/useProjectStore';
-import { ARCanvas } from './ARCanvas';
 import { Toolbar } from './Toolbar';
 import { SidePanel } from './SidePanel';
 import { cn } from '@/lib/utils';
+import { checkWebXRSupport } from '@/lib/webxr';
+
+// Sample 3D models for furniture (these would normally come from API)
+const FURNITURE_MODELS: Record<string, { name: string; emoji: string }> = {
+  '/models/1.glb': { name: 'Modern Sofa', emoji: '🛋️' },
+  '/models/2.glb': { name: 'Coffee Table', emoji: '🪑' },
+  '/models/3.glb': { name: 'Floor Lamp', emoji: '💡' },
+  '/models/4.glb': { name: 'Bookshelf', emoji: '📚' },
+  '/models/5.glb': { name: 'Armchair', emoji: '🪑' },
+  '/models/6.glb': { name: 'Dining Table', emoji: '🍽️' },
+};
+
+// Dynamic import - SimpleARCanvas doesn't use React Three Fiber (React 19 compatible)
+const SimpleARCanvas = dynamic(
+  () => import('./SimpleARCanvas').then(mod => mod.SimpleARCanvas),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="absolute inset-0 flex items-center justify-center bg-gray-950">
+        <div className="text-center text-white">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4" />
+          <p>Loading AR Engine...</p>
+        </div>
+      </div>
+    ),
+  }
+);
 
 // ============================================================================
 // Types
@@ -39,17 +66,40 @@ export function ProjectWorkspace({
     message: string;
     type: 'success' | 'error' | 'info';
   } | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [selectedModelUrl, setSelectedModelUrl] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [placementMode, setPlacementMode] = useState(false);
+  const [webxrSupported, setWebxrSupported] = useState<boolean | null>(null);
+  const [isARActive, setIsARActive] = useState(false);
+
+  // Check WebXR support on mount
+  useEffect(() => {
+    checkWebXRSupport().then((support) => {
+      setWebxrSupported(support.hasAR);
+      console.log('[ProjectWorkspace] WebXR AR supported:', support.hasAR);
+    });
+  }, []);
 
   // Zustand stores
   const {
     viewMode,
     setViewMode,
     currentTool,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     isSessionActive,
     error: arError,
     clearError: clearARError,
     reset: resetAR,
+    selectedModelUrl: storeSelectedModelUrl,
+    selectModel,
   } = useARStore();
+
+  // Get furniture info for selected model
+  const selectedFurniture = useMemo(() => {
+    if (!storeSelectedModelUrl) return null;
+    return FURNITURE_MODELS[storeSelectedModelUrl] || { name: 'Custom Model', emoji: '📦' };
+  }, [storeSelectedModelUrl]);
 
   const {
     setProject,
@@ -103,11 +153,14 @@ export function ProjectWorkspace({
     }
   }, [arError, clearARError]);
 
-  const handleScanComplete = useCallback(() => {
+  // Called when scan completes (for future native AR integration)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _handleScanComplete = useCallback(() => {
     showNotification('Scan complete! Room captured successfully.', 'success');
     setViewMode('design');
   }, [setViewMode, showNotification]);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleObjectPlaced = useCallback(
     (object: PlacedObject) => {
       addPlacedObject(object);
@@ -116,7 +169,9 @@ export function ProjectWorkspace({
     [addPlacedObject, setNotification]
   );
 
-  const handleMeasurementComplete = useCallback(
+  // Called when measurement completes (for future native AR integration)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _handleMeasurementComplete = useCallback(
     (distance: number) => {
       showNotification(`Distance: ${distance.toFixed(2)}m`, 'info');
     },
@@ -126,11 +181,13 @@ export function ProjectWorkspace({
   const handleModeChange = useCallback(
     (mode: ViewMode) => {
       setViewMode(mode);
+      // Enable placement mode in design view
+      setPlacementMode(mode === 'design');
       if (mode === 'design' || mode === 'guide') {
         setShowSidePanel(true);
       }
     },
-    [setViewMode, setShowSidePanel]
+    [setViewMode, setShowSidePanel, setPlacementMode]
   );
 
   const handleToolSelect = useCallback(
@@ -139,9 +196,21 @@ export function ProjectWorkspace({
       if (tool === 'catalog' || tool === 'materials' || tool === 'style') {
         setShowSidePanel(true);
       }
+      // Enable placement mode when selecting placement tools
+      if (tool === 'place' || tool === 'catalog') {
+        setPlacementMode(true);
+      }
     },
-    [setShowSidePanel]
+    [setShowSidePanel, setPlacementMode]
   );
+
+  // Handle model selection from catalog (for future use)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleModelSelect = useCallback((modelUrl: string) => {
+    setSelectedModelUrl(modelUrl);
+    setPlacementMode(true);
+    showNotification('Model selected - tap to place in AR', 'info');
+  }, [setSelectedModelUrl, setPlacementMode, showNotification]);
 
   // ============================================================================
   // Render
@@ -152,17 +221,32 @@ export function ProjectWorkspace({
 
   return (
     <div className={cn('relative w-full h-full bg-gray-950 overflow-hidden', className)}>
-      {/* Main AR Canvas */}
-      <ARCanvas
+      {/* Main AR Canvas - Simple WebXR without R3F for React 19 compatibility */}
+      <SimpleARCanvas
         className="absolute inset-0"
-        onScanComplete={handleScanComplete}
-        onObjectPlaced={(objectId: string) => handleObjectPlaced({ id: objectId, productName: 'Placed Object', modelUrl: '', position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0, w: 1 }, scale: { x: 1, y: 1, z: 1 }, addedAt: new Date() })}
-        onMeasurementComplete={handleMeasurementComplete}
-        onError={(error) => setNotification({ message: error, type: 'error' })}
+        selectedFurniture={selectedFurniture}
+        onARStart={() => {
+          setIsARActive(true);
+          showNotification('AR session started!', 'success');
+        }}
+        onAREnd={() => {
+          setIsARActive(false);
+          showNotification('AR session ended', 'info');
+        }}
+        onError={(error) => {
+          showNotification(error, 'error');
+        }}
+        onFurniturePlaced={(name) => {
+          showNotification(`Placed ${name}!`, 'success');
+          selectModel(''); // Clear selection after placing
+        }}
       />
 
-      {/* Top Bar */}
-      <div className="absolute top-0 left-0 right-0 z-10">
+      {/* Top Bar - Hidden during AR */}
+      <div className={cn(
+        "absolute top-0 left-0 right-0 z-10 transition-opacity duration-300",
+        isARActive && "opacity-0 pointer-events-none"
+      )}>
         <div className="flex items-center justify-between p-4 bg-linear-to-b from-black/60 to-transparent">
           {/* Project Name */}
           <div className="flex items-center gap-3">
@@ -180,7 +264,8 @@ export function ProjectWorkspace({
               <p className="text-white/60 text-xs capitalize">
                 {viewMode} Mode
                 {activeToolLabel && ` • ${activeToolLabel}`}
-                {isSessionActive && ' • Active'}
+                {webxrSupported === true && ' • WebXR ✓'}
+                {webxrSupported === false && ' • 3D Preview'}
               </p>
             </div>
           </div>
@@ -224,21 +309,25 @@ export function ProjectWorkspace({
         </div>
       </div>
 
-      {/* Toolbar */}
-      <Toolbar
-        className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10"
-        onToolSelect={handleToolSelect}
-      />
+      {/* Toolbar - Hidden during AR */}
+      {!isARActive && (
+        <Toolbar
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10"
+          onToolSelect={handleToolSelect}
+        />
+      )}
 
-      {/* Side Panel */}
-      <SidePanel
-        isOpen={shouldShowSidePanel}
-        onClose={() => setShowSidePanel(false)}
-        className="absolute top-0 right-0 bottom-0 z-20"
-      />
+      {/* Side Panel - Hidden during AR */}
+      {!isARActive && (
+        <SidePanel
+          isOpen={shouldShowSidePanel}
+          onClose={() => setShowSidePanel(false)}
+          className="absolute top-0 right-0 bottom-0 z-20"
+        />
+      )}
 
-      {/* Stats Bar (when scanning is complete) */}
-      {currentScan && viewMode !== 'scan' && (
+      {/* Stats Bar (when scanning is complete) - Hidden during AR */}
+      {!isARActive && currentScan && viewMode !== 'scan' && (
         <div className="absolute bottom-4 left-4 z-10">
           <div className="flex items-center gap-4 px-4 py-2 rounded-xl bg-black/50 backdrop-blur-sm">
             <Stat

@@ -9,6 +9,8 @@ import {
   User,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut as firebaseSignOut,
   GoogleAuthProvider,
 } from 'firebase/auth';
@@ -38,19 +40,52 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [redirectChecked, setRedirectChecked] = useState(false);
 
+  // Handle redirect result FIRST (for mobile auth)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    console.log('[Auth] Checking redirect result...');
+    getRedirectResult(auth)
+      .then((result) => {
+        console.log('[Auth] Redirect result:', result?.user?.email ?? 'no user');
+        if (result?.user) {
+          setUser(result.user);
+        }
+      })
+      .catch((error) => {
+        console.error('[Auth] Redirect auth error:', error);
+      })
+      .finally(() => {
+        setRedirectChecked(true);
+      });
+  }, []);
+
+  // Then listen for auth state changes
+  useEffect(() => {
+    // Wait for redirect check to complete first
+    if (!redirectChecked) return;
+
+    console.log('[Auth] Starting auth state listener...');
+    const unsubscribe = onAuthStateChanged(auth, (authUser) => {
+      console.log('[Auth] Auth state changed:', authUser?.email ?? 'no user');
+      setUser(authUser);
       setLoading(false);
     });
 
     return unsubscribe;
-  }, []);
+  }, [redirectChecked]);
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    
+    try {
+      // Try popup first (works better when domains differ)
+      await signInWithPopup(auth, provider);
+    } catch (error: unknown) {
+      console.error('[Auth] Popup failed, trying redirect:', error);
+      // Fall back to redirect if popup is blocked
+      await signInWithRedirect(auth, provider);
+    }
   };
 
   const signOut = async () => {

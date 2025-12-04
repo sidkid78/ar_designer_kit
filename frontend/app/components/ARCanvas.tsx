@@ -10,6 +10,7 @@
 
 import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { useARBridge } from '@/lib/ar-bridge';
+import { useWebXR } from '@/hooks/useWebXR';
 import { useARStore } from '@/stores/useARStore';
 import { useProjectStore } from '@/stores/useProjectStore';
 import { cn } from '@/lib/utils';
@@ -43,6 +44,8 @@ export function ARCanvas({
   // AR Bridge hook
   const {
     isSupported,
+    hasAnyARSupport,
+    isWebXRSupported,
     isScanning,
     scanProgress,
     trackingState,
@@ -56,6 +59,14 @@ export function ARCanvas({
     hitTest,
     clearError: clearBridgeError,
   } = useARBridge();
+
+  // WebXR hook for actual AR session
+  const {
+    startSession: startWebXRSession,
+    endSession: endWebXRSession,
+    isSessionActive: isWebXRActive,
+    error: webXRError,
+  } = useWebXR();
 
   // Zustand stores
   const {
@@ -118,6 +129,23 @@ export function ARCanvas({
     }
   }, [bridgeError, setError, onError]);
 
+  // Handle WebXR errors
+  useEffect(() => {
+    if (webXRError) {
+      setError(webXRError);
+      onError?.(webXRError);
+    }
+  }, [webXRError, setError, onError]);
+
+  // Sync WebXR session state
+  useEffect(() => {
+    if (isWebXRActive && !isSessionActive) {
+      startSession();
+    } else if (!isWebXRActive && isSessionActive) {
+      endSession();
+    }
+  }, [isWebXRActive, isSessionActive, startSession, endSession]);
+
   // ============================================================================
   // Handlers
   // ============================================================================
@@ -126,24 +154,34 @@ export function ARCanvas({
     try {
       clearError();
       clearBridgeError();
+      
+      // Start actual WebXR AR session
+      if (isWebXRSupported) {
+        await startWebXRSession();
+      }
+      
+      // Update store state
       startSession();
+      
+      // Start the AR bridge scan (for native features)
       await startScan({ recognizeObjects: true, highAccuracy: true });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to start scan';
+      const message = err instanceof Error ? err.message : 'Failed to start AR session';
       setError(message);
       onError?.(message);
     }
-  }, [startScan, startSession, clearError, clearBridgeError, setError, onError]);
+  }, [startScan, startSession, startWebXRSession, isWebXRSupported, clearError, clearBridgeError, setError, onError]);
 
   const handleStopScan = useCallback(async () => {
     try {
       await stopScan();
+      endWebXRSession();
       endSession();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to stop scan';
       setError(message);
     }
-  }, [stopScan, endSession, setError]);
+  }, [stopScan, endSession, endWebXRSession, setError]);
 
   const handleTouchStart = useCallback(
     async (e: React.TouchEvent | React.MouseEvent) => {
@@ -299,7 +337,7 @@ export function ARCanvas({
       <div className="absolute inset-0 flex items-center justify-center">
         {!isSessionActive && (
           <div className="text-center text-white/60 p-8">
-            {isSupported === false ? (
+            {hasAnyARSupport === false ? (
               <div className="space-y-4">
                 <div className="text-6xl">📱</div>
                 <p className="text-lg font-medium">AR Not Supported</p>
@@ -308,8 +346,11 @@ export function ARCanvas({
                   <br />
                   Please use an AR-capable device.
                 </p>
+                <p className="text-xs text-white/40">
+                  LiDAR: {isSupported ? '✓' : '✗'} | WebXR: {isWebXRSupported ? '✓' : '✗'}
+                </p>
               </div>
-            ) : isSupported === null ? (
+            ) : hasAnyARSupport === null || (isSupported === null && isWebXRSupported === null) ? (
               <div className="space-y-4">
                 <div className="animate-pulse text-4xl">🔍</div>
                 <p>Checking device capabilities...</p>

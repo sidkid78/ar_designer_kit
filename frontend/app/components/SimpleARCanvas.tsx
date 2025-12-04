@@ -8,6 +8,8 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import { Capacitor } from '@capacitor/core';
+import { ARBridge } from '@/lib/ar-bridge';
 
 interface SimpleARCanvasProps {
   className?: string;
@@ -39,6 +41,8 @@ export function SimpleARCanvas({
   const [isARSupported, setIsARSupported] = useState<boolean | null>(null);
   const [isARActive, setIsARActive] = useState(false);
   const [status, setStatus] = useState('Checking AR support...');
+  const [isNativeApp, setIsNativeApp] = useState(false);
+  const [isNativeScanActive, setIsNativeScanActive] = useState(false);
   const [placedMarkers, setPlacedMarkers] = useState<PlacedMarker[]>([]);
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
   const [hitPosition, setHitPosition] = useState<{ x: number; y: number; z: number } | null>(null);
@@ -58,9 +62,22 @@ export function SimpleARCanvas({
     onFurniturePlacedRef.current = onFurniturePlaced || null;
   }, [selectedFurniture, onFurniturePlaced]);
 
-  // Check WebXR AR support
+  // Check AR support (native and WebXR)
   useEffect(() => {
     const checkSupport = async () => {
+      // Check if running in native Capacitor app
+      const isNative = Capacitor.isNativePlatform();
+      setIsNativeApp(isNative);
+      
+      if (isNative) {
+        // In native app, AR is supported via ARCore
+        setIsARSupported(true);
+        setStatus('Native AR Ready (ARCore)');
+        console.log('[SimpleARCanvas] Running in native Capacitor app');
+        return;
+      }
+
+      // Fall back to WebXR check for web
       if (!navigator.xr) {
         setIsARSupported(false);
         setStatus('WebXR not available');
@@ -102,6 +119,86 @@ export function SimpleARCanvas({
     selectedMarkerIdRef.current = null;
     setStatus('Markers cleared');
   }, []);
+
+  // Start native AR scan (Capacitor/ARCore)
+  const startNativeScan = useCallback(async () => {
+    try {
+      setIsNativeScanActive(true);
+      setStatus('Starting native AR scan...');
+      onARStart?.();
+      
+      // Call native ARBridge plugin
+      const result = await ARBridge.startScan({
+        recognizeObjects: true,
+        highAccuracy: false,
+      });
+      
+      console.log('[SimpleARCanvas] Native scan started:', result);
+      setStatus('Scanning... Move device slowly');
+      
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to start native scan';
+      setStatus(`Error: ${message}`);
+      onError?.(message);
+      setIsNativeScanActive(false);
+      console.error('[SimpleARCanvas] Native scan error:', err);
+    }
+  }, [onARStart, onError]);
+
+  // Listen for native scan events
+  useEffect(() => {
+    if (!isNativeApp) return;
+    
+    const setupListeners = async () => {
+      try {
+        // Listen for scan completion
+        const scanCompleteListener = await ARBridge.addListener('scanComplete', (data) => {
+          console.log('[SimpleARCanvas] Scan complete:', data);
+          setIsNativeScanActive(false);
+          setStatus(`Scan complete! ${data.dimensions ? 
+            `Room: ${data.dimensions.width.toFixed(1)}m × ${data.dimensions.length.toFixed(1)}m` : 
+            'Processing...'}`);
+          onAREnd?.();
+        });
+
+        // Listen for scan progress
+        const progressListener = await ARBridge.addListener('scanProgress', (data) => {
+          setStatus(`Scanning... ${Math.round(data.progress * 100)}%`);
+        });
+
+        // Listen for scan dismissed/cancelled
+        const dismissListener = await ARBridge.addListener('scanDismissed', () => {
+          console.log('[SimpleARCanvas] Scan dismissed');
+          setIsNativeScanActive(false);
+          setStatus('Scan cancelled');
+          onAREnd?.();
+        });
+
+        // Listen for errors
+        const errorListener = await ARBridge.addListener('scanError', (data) => {
+          console.error('[SimpleARCanvas] Scan error:', data.error);
+          setIsNativeScanActive(false);
+          setStatus(`Error: ${data.error}`);
+          onError?.(data.error);
+          onAREnd?.();
+        });
+
+        return () => {
+          scanCompleteListener.remove();
+          progressListener.remove();
+          dismissListener.remove();
+          errorListener.remove();
+        };
+      } catch (err) {
+        console.error('[SimpleARCanvas] Failed to setup native listeners:', err);
+      }
+    };
+
+    const cleanup = setupListeners();
+    return () => {
+      cleanup.then(fn => fn?.());
+    };
+  }, [isNativeApp, onAREnd, onError]);
 
   // Delete selected marker
   const deleteSelectedMarker = useCallback(() => {
@@ -485,14 +582,40 @@ export function SimpleARCanvas({
             <p className="text-gray-400 text-sm">{status}</p>
           </div>
 
-          {/* AR Button */}
+          {/* AR Buttons */}
           {isARSupported && (
-            <button
-              onClick={startAR}
-              className="px-8 py-4 bg-linear-to-r from-purple-600 to-blue-600 text-white text-lg font-semibold rounded-2xl shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95"
-            >
-              🥽 Start AR Experience
-            </button>
+            <div className="flex flex-col gap-4">
+              {/* Native AR Scan (Capacitor/ARCore) - Primary on mobile */}
+              {isNativeApp && (
+                <button
+                  onClick={startNativeScan}
+                  disabled={isNativeScanActive}
+                  className={cn(
+                    "px-8 py-4 text-white text-lg font-semibold rounded-2xl shadow-lg transition-all",
+                    isNativeScanActive 
+                      ? "bg-gray-600 cursor-not-allowed" 
+                      : "bg-linear-to-r from-green-600 to-emerald-600 hover:shadow-xl hover:scale-105 active:scale-95"
+                  )}
+                >
+                  {isNativeScanActive ? '🔄 Scanning...' : '📷 Start Room Scan (ARCore)'}
+                </button>
+              )}
+              
+              {/* WebXR AR - Works in browser */}
+              <button
+                onClick={startAR}
+                className="px-8 py-4 bg-linear-to-r from-purple-600 to-blue-600 text-white text-lg font-semibold rounded-2xl shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95"
+              >
+                🥽 {isNativeApp ? 'Quick AR Preview' : 'Start AR Experience'}
+              </button>
+              
+              {isNativeApp && (
+                <p className="text-gray-500 text-xs text-center max-w-xs">
+                  Room Scan uses ARCore for high-accuracy 3D scanning.
+                  <br />Quick AR Preview uses WebXR for instant placement.
+                </p>
+              )}
+            </div>
           )}
 
           {/* Non-AR info */}
